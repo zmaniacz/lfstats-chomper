@@ -1,6 +1,8 @@
 const aws = require("aws-sdk");
 const readline = require("readline");
 const moment = require("moment");
+const iconv = require("iconv-lite");
+const AutoDetectDecoderStream = require("autodetect-decoder-stream");
 const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 
 //TODO
@@ -23,7 +25,9 @@ exports.handler = async (event, context) => {
 
   const s3ReadStream = s3
     .getObject(params)
-    .createReadStream({ encoding: "utf8" });
+    .createReadStream()
+    .pipe(new AutoDetectDecoderStream())
+    .pipe(iconv.encodeStream("utf8"));
 
   const rl = readline.createInterface({
     input: s3ReadStream,
@@ -40,8 +44,8 @@ exports.handler = async (event, context) => {
   var output = {};
   output.hits = {};
   output.missiles = {};
-  output.entities = [];
-  output.teams = [];
+  output.entities = {};
+  output.teams = {};
   output.events = [];
   output.score_events = [];
 
@@ -57,34 +61,38 @@ exports.handler = async (event, context) => {
             file_version: record[1],
             program_version: record[2]
           };
+          output.game = {
+            center: record[3]
+          };
         } else if (record[0] == 1) {
           //;1/mission	type	desc	start
           console.log("date", moment(record[3], "YYYYMMDDHHmmss").format());
           output.game = {
             type: record[1],
             desc: record[2],
-            start: record[3],
-            starttime: moment(record[3], "YYYYMMDDHHmmss").format()
+            start: parseInt(record[3]),
+            starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
+            ...output.game
           };
         } else if (record[0] == 2) {
           //;2/team	index	desc	colour-enum	colour-desc
-          output.teams.push({
+          output.teams[record[1]] = {
             index: record[1],
             desc: record[2],
             color_enum: record[3],
             color_desc: record[4]
-          });
+          };
         } else if (record[0] == 3) {
           //;3/entity-start	time	id	type	desc	team	level	category
-          output.entities.push({
-            start: record[1],
+          output.entities[record[2]] = {
+            start: parseInt(record[1]),
             ipl_id: record[2],
             type: record[3],
             desc: record[4],
-            team: record[5],
-            level: record[6],
+            team: parseInt(record[5]),
+            level: parseInt(record[6]),
             position: ENTITY_TYPES[record[7]]
-          });
+          };
 
           //also init a hits and missiles array for this player
           if (record[3] == "player") {
@@ -135,41 +143,45 @@ exports.handler = async (event, context) => {
           });
         } else if (record[0] == 6) {
           //;6/entity-end	time	id	type	score
-          let index = output.entities.findIndex(obj => obj.ipl_id == record[2]);
-          output.entities[index].end = record[1];
-          output.entities[index].score = record[4];
-          output.entities[index].survived =
-            (Math.round(
-              (output.entities[index].end - output.entities[index].start) / 1000
-            ) *
-              1000) /
-            1000;
+          output.entities[record[2]] = {
+            end: parseInt(record[1]),
+            score: parseInt(record[4]),
+            survived:
+              (Math.round(
+                (record[1] - output.entities[record[2]].start) / 1000
+              ) *
+                1000) /
+              1000,
+            ...output.entities[record[2]]
+          };
         } else if (record[0] == 7) {
           //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
-          let index = output.entities.findIndex(obj => obj.ipl_id == record[1]);
-          output.entities[index].shotsHit = record[2];
-          output.entities[index].shotsFired = record[3];
-          output.entities[index].timesZapped = record[4];
-          output.entities[index].timesMissiled = record[5];
-          output.entities[index].missileHits = record[6];
-          output.entities[index].nukesDetonated = record[7];
-          output.entities[index].nukesActivated = record[8];
-          output.entities[index].nukeCancels = record[9];
-          output.entities[index].medicHits = record[10];
-          output.entities[index].ownMedicHits = record[11];
-          output.entities[index].medicNukes = record[12];
-          output.entities[index].scoutRapid = record[13];
-          output.entities[index].lifeBoost = record[14];
-          output.entities[index].ammoBoost = record[15];
-          output.entities[index].livesLeft = record[16];
-          output.entities[index].shotsLeft = record[17];
-          output.entities[index].penalties = record[18];
-          output.entities[index].shot3Hit = record[19];
-          output.entities[index].ownNukeCancels = record[20];
-          output.entities[index].shotOpponent = record[21];
-          output.entities[index].shotTeam = record[22];
-          output.entities[index].missiledOpponent = record[23];
-          output.entities[index].missiledTeam = record[24];
+          output.entities[record[1]] = {
+            shotsHit: parseInt(record[2]),
+            shotsFired: parseInt(record[3]),
+            timesZapped: parseInt(record[4]),
+            timesMissiled: parseInt(record[5]),
+            missileHits: parseInt(record[6]),
+            nukesDetonated: parseInt(record[7]),
+            nukesActivated: parseInt(record[8]),
+            nukeCancels: parseInt(record[9]),
+            medicHits: parseInt(record[10]),
+            ownMedicHits: parseInt(record[11]),
+            medicNukes: parseInt(record[12]),
+            scoutRapid: parseInt(record[13]),
+            lifeBoost: parseInt(record[14]),
+            ammoBoost: parseInt(record[15]),
+            livesLeft: parseInt(record[16]),
+            shotsLeft: parseInt(record[17]),
+            penalties: parseInt(record[18]),
+            shot3Hit: parseInt(record[19]),
+            ownNukeCancels: parseInt(record[20]),
+            shotOpponent: parseInt(record[21]),
+            shotTeam: parseInt(record[22]),
+            missiledOpponent: parseInt(record[23]),
+            missiledTeam: parseInt(record[24]),
+            ...output.entities[record[1]]
+          };
         }
       }
     });
