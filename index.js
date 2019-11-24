@@ -4,11 +4,10 @@ const moment = require("moment");
 const iconv = require("iconv-lite");
 const AutoDetectDecoderStream = require("autodetect-decoder-stream");
 const s3 = new aws.S3({ apiVersion: "2006-03-01" });
+const { Pool, Client } = require("pg");
 
-//TODO
-//Build the hits table
-//Save to JSON? Or go straight to DB
-//move file out of incoming
+const targetBucket = process.env.TARGET_BUCKET;
+const connectionString = process.env.DATABASE_URL;
 
 exports.handler = async (event, context) => {
   //console.log("Received event:", JSON.stringify(event, null, 2));
@@ -46,8 +45,8 @@ exports.handler = async (event, context) => {
   output.missiles = {};
   output.entities = {};
   output.teams = {};
-  output.events = [];
-  output.score_events = [];
+  output.actions = [];
+  output.score_deltas = [];
 
   let chompFile = new Promise((resolve, reject) => {
     rl.on("line", line => {
@@ -101,7 +100,7 @@ exports.handler = async (event, context) => {
           }
         } else if (record[0] == 4) {
           //;4/event	time	type	varies
-          output.events.push({
+          output.actions.push({
             time: record[1],
             type: record[2],
             player: record[3],
@@ -126,6 +125,7 @@ exports.handler = async (event, context) => {
 
           //compute game start, end and length
           if (record[2] == "0101") {
+            let gameLength;
             gameLength = (Math.round(record[1] / 1000) * 1000) / 1000;
             output.game.endtime = moment(output.game.start, "YYYYMMDDHHmmss")
               .seconds(gameLength)
@@ -134,7 +134,7 @@ exports.handler = async (event, context) => {
           }
         } else if (record[0] == 5) {
           //;5/score	time	entity	old	delta	new
-          output.score_events.push({
+          output.score_deltas.push({
             time: record[1],
             player: record[2],
             old: record[3],
@@ -197,9 +197,19 @@ exports.handler = async (event, context) => {
     await chompFile;
 
     const resultParams = {
-      Bucket: bucket,
-      Key: key.replace(".tdf", ".json"),
+      Bucket: targetBucket,
+      Key: `${output.game.center}_${
+        output.game.start
+      }_${output.game.desc.replace(/ /g, "-")}.json`,
       Body: JSON.stringify(output, null, 4)
+    };
+
+    const storageParams = {
+      CopySource: bucket + "/" + key,
+      Bucket: targetBucket,
+      Key: `${output.game.center}_${
+        output.game.start
+      }_${output.game.desc.replace(/ /g, "-")}.tdf`
     };
     await s3
       .putObject(resultParams, function(err, data) {
@@ -208,8 +218,66 @@ exports.handler = async (event, context) => {
         else console.log(data); // successful response
       })
       .promise();
+
+    await s3
+      .copyObject(storageParams, function(err, data) {
+        if (err) console.log(err, err.stack);
+        // an error occurred
+        else console.log(data); // successful response
+      })
+      .promise();
   } catch (err) {
     console.log("an error has occurred");
+  }
+
+  //now let's go to the database
+  const pool = new Pool({
+    connectionString: connectionString
+  });
+
+  // note: we don't try/catch this because if connecting throws an exception
+  // we don't need to dispose of the client (it will be undefined)
+
+  //IMPORT PROCESS
+  //roll through the entities
+  //cehck for IPL match first, if exists, get id and move to next
+  //check for name && ipl_id is null - udpate ipl_id if found and get id
+  //create new player record
+  //NON IPL ENTITIES?????? - NULL player_id? lots of side effects but maybe best option - would allow deleting a lot of DB cruft
+  //null player_id would fuck up hits though
+  //maybe just update wth @ id
+
+  //if an ipl match is found, also check for aliases - if new alias on existing ipl, add alias
+
+  //cehck for game center id and timestamp - if exists, abort
+  //insert game and get id
+  //insaert the teams objects as well into a column on game - maybe use it in the future
+
+  //insert scorecards with player id and game_id
+  //will default to evnet_id NULL whihc will put them in the review queue
+
+  //insert hit stats
+  //insert missile stats
+
+  //insert game actions and scorecard delta
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const queryText =
+      "INSERT INTO game_actions(action_time, action) VALUES($1, $2) RETURNING id";
+
+    output.actions.forEach(action => {
+      client.query(queryText, [action.time, action]);
+    });
+
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
   }
 
   console.log("CHOMP COMPLETE");
