@@ -4,12 +4,12 @@ const moment = require("moment");
 const iconv = require("iconv-lite");
 const AutoDetectDecoderStream = require("autodetect-decoder-stream");
 const s3 = new aws.S3({ apiVersion: "2006-03-01" });
-const { Pool, Client } = require("pg");
+const { Pool } = require("pg");
 
 const targetBucket = process.env.TARGET_BUCKET;
 const connectionString = process.env.DATABASE_URL;
 
-exports.handler = async (event, context) => {
+exports.handler = async event => {
   //console.log("Received event:", JSON.stringify(event, null, 2));
 
   const bucket = event.Records[0].s3.bucket.name;
@@ -41,8 +41,6 @@ exports.handler = async (event, context) => {
     5: "Medic"
   };
   var output = {};
-  output.hits = {};
-  output.missiles = {};
   output.entities = {};
   output.teams = {};
   output.actions = [];
@@ -65,7 +63,6 @@ exports.handler = async (event, context) => {
           };
         } else if (record[0] == 1) {
           //;1/mission	type	desc	start
-          console.log("date", moment(record[3], "YYYYMMDDHHmmss").format());
           output.game = {
             type: record[1],
             desc: record[2],
@@ -79,7 +76,8 @@ exports.handler = async (event, context) => {
             index: record[1],
             desc: record[2],
             color_enum: record[3],
-            color_desc: record[4]
+            color_desc: record[4],
+            score: 0
           };
         } else if (record[0] == 3) {
           //;3/entity-start	time	id	type	desc	team	level	category
@@ -90,7 +88,9 @@ exports.handler = async (event, context) => {
             desc: record[4],
             team: parseInt(record[5]),
             level: parseInt(record[6]),
-            position: ENTITY_TYPES[record[7]]
+            position: ENTITY_TYPES[record[7]],
+            hits: {},
+            missiles: {}
           };
 
           //also init a hits and missiles array for this player
@@ -110,17 +110,22 @@ exports.handler = async (event, context) => {
 
           //track and total hits
           if (record[2] == "0205" || record[2] == "0206") {
-            if (typeof output.hits[record[3]][record[5]] == "undefined") {
-              output.hits[record[3]][record[5]] = 0;
+            if (
+              typeof output.entities[record[3]].hits[record[5]] == "undefined"
+            ) {
+              output.entities[record[3]].hits[record[5]] = 0;
             }
-            output.hits[record[3]][record[5]] += 1;
+            output.entities[record[3]].hits[record[5]] += 1;
           }
-          //track and total missiles
+          //track and total missiles against players
           if (record[2] == "0306") {
-            if (typeof output.missiles[record[3]][record[5]] == "undefined") {
-              output.missiles[record[3]][record[5]] = 0;
+            if (
+              typeof output.entities[record[3]].missiles[record[5]] ==
+              "undefined"
+            ) {
+              output.entities[record[3]].missiles[record[5]] = 0;
             }
-            output.missiles[record[3]][record[5]] += 1;
+            output.entities[record[3]].missiles[record[5]] += 1;
           }
 
           //compute game start, end and length
@@ -196,6 +201,12 @@ exports.handler = async (event, context) => {
   try {
     await chompFile;
 
+    //total up team scores
+    for (entity in output.entities) {
+      output.teams[output.entities[entity].team].score +=
+        output.entities[entity].score;
+    }
+
     const resultParams = {
       Bucket: targetBucket,
       Key: `${output.game.center}_${
@@ -227,16 +238,8 @@ exports.handler = async (event, context) => {
       })
       .promise();
   } catch (err) {
-    console.log("an error has occurred");
+    console.log("Error", err.stack);
   }
-
-  //now let's go to the database
-  const pool = new Pool({
-    connectionString: connectionString
-  });
-
-  // note: we don't try/catch this because if connecting throws an exception
-  // we don't need to dispose of the client (it will be undefined)
 
   //IMPORT PROCESS
   //roll through the entities
@@ -261,16 +264,32 @@ exports.handler = async (event, context) => {
 
   //insert game actions and scorecard delta
 
+  //now let's go to the database
+  const pool = new Pool({
+    connectionString: connectionString
+  });
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    const queryText =
+    //Let's see if the game already exists before we start doing too much
+    let res = await client.query(
+      "select count(games.id) from games inner join centers on games.center_id=centers.id where game_datetime=$1 and centers.ipl_id=$2",
+      [output.game.starttime, output.game.center]
+    );
+    if (res.rows[0].count == 0) {
+      //no collision, continue with the import
+      const insertGameText =
+        "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj";
+
+      /*const queryText =
       "INSERT INTO game_actions(action_time, action) VALUES($1, $2) RETURNING id";
 
     output.actions.forEach(action => {
       client.query(queryText, [action.time, action]);
-    });
+    });*/
+    }
 
     await client.query("COMMIT");
   } catch (e) {
