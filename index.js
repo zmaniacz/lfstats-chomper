@@ -72,12 +72,27 @@ exports.handler = async event => {
           };
         } else if (record[0] == 2) {
           //;2/team	index	desc	colour-enum	colour-desc
+          //normalize the team colors to either red or green because reasons
+          let normal_team = "";
+          if (record[4] == "Fire" || record[4] == "Red") {
+            normal_team = "red";
+          } else if (
+            record[4] == "Ice" ||
+            record[4] == "Yellow" ||
+            record[4] == "Blue" ||
+            record[4] == "Green" ||
+            record[4] == "Earth"
+          ) {
+            normal_team = "green";
+          }
+
           output.teams[record[1]] = {
             index: record[1],
             desc: record[2],
             color_enum: record[3],
             color_desc: record[4],
-            score: 0
+            score: 0,
+            normal_team: normal_team
           };
         } else if (record[0] == 3) {
           //;3/entity-start	time	id	type	desc	team	level	category
@@ -92,20 +107,14 @@ exports.handler = async event => {
             hits: {},
             missiles: {}
           };
-
-          //also init a hits and missiles array for this player
-          if (record[3] == "player") {
-            output.hits[record[2]] = {};
-            output.missiles[record[2]] = {};
-          }
         } else if (record[0] == 4) {
           //;4/event	time	type	varies
           output.actions.push({
             time: record[1],
             type: record[2],
             player: record[3],
-            action: record[4],
-            target: record[5]
+            action: typeof record[4] == "undefined" ? "" : record[4],
+            target: typeof record[5] == "undefined" ? "" : record[5]
           });
 
           //track and total hits
@@ -194,18 +203,17 @@ exports.handler = async event => {
       console.log("read error");
     });
     rl.on("close", function() {
+      //total up team scores
+      for (const entity in output.entities) {
+        output.teams[output.entities[entity].team].score +=
+          output.entities[entity].score;
+      }
       resolve();
     });
   });
 
   try {
     await chompFile;
-
-    //total up team scores
-    for (entity in output.entities) {
-      output.teams[output.entities[entity].team].score +=
-        output.entities[entity].score;
-    }
 
     const resultParams = {
       Bucket: targetBucket,
@@ -274,21 +282,53 @@ exports.handler = async event => {
     await client.query("BEGIN");
 
     //Let's see if the game already exists before we start doing too much
-    let res = await client.query(
+    let gameCount = await client.query(
       "select count(games.id) from games inner join centers on games.center_id=centers.id where game_datetime=$1 and centers.ipl_id=$2",
       [output.game.starttime, output.game.center]
     );
-    if (res.rows[0].count == 0) {
-      //no collision, continue with the import
-      const insertGameText =
-        "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj";
 
-      /*const queryText =
-      "INSERT INTO game_actions(action_time, action) VALUES($1, $2) RETURNING id";
+    if (gameCount.rows[0].count == 0) {
+      let center = await client.query("SELECT * from centers WHERE ipl_id=$1", [
+        output.game.center
+      ]);
+      //need to normalize team colors and determine elims before inserting the game
+      let redTeam;
+      let greenTeam;
+      for (const team in output.teams) {
+        if (output.teams[team].normal_team == "red")
+          redTeam = output.teams[team];
+        if (output.teams[team].normal_team == "green")
+          greenTeam = output.teams[team];
+      }
 
-    output.actions.forEach(action => {
-      client.query(queryText, [action.time, action]);
-    });*/
+      const insertGameQuery = {
+        text:
+          "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,center_id,type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id",
+        values: [
+          "Game @ " + output.game.starttime,
+          "",
+          output.game.starttime,
+          output.game.gameLength,
+          redTeam.score,
+          greenTeam.score,
+          0,
+          0,
+          center.rows[0].id,
+          "social"
+        ]
+      };
+      let game = await client.query(insertGameQuery);
+
+      const insertGameActionsQueryText =
+        "INSERT INTO game_actions(action_time, action, game_id) VALUES($1, $2, $3) RETURNING id";
+
+      for (let action of output.actions) {
+        await client.query(insertGameActionsQueryText, [
+          action.time,
+          action,
+          game.rows[0].id
+        ]);
+      }
     }
 
     await client.query("COMMIT");
