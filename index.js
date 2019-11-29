@@ -92,6 +92,7 @@ exports.handler = async event => {
             color_enum: record[3],
             color_desc: record[4],
             score: 0,
+            livesLeft: 0,
             normal_team: normal_team
           };
         } else if (record[0] == 3) {
@@ -196,6 +197,8 @@ exports.handler = async event => {
             missiledTeam: parseInt(record[24]),
             ...output.entities[record[1]]
           };
+          output.teams[output.entities[record[1]].team].livesLeft +=
+            output.entities[record[1]].livesLeft;
         }
       }
     });
@@ -301,9 +304,34 @@ exports.handler = async event => {
           greenTeam = output.teams[team];
       }
 
+      //Assign elim bonuses
+      let greenBonus = 0,
+        redBonus = 0;
+      let redElim = 0,
+        greenElim = 0;
+      if (redTeam.livesLeft == 0) {
+        greenBonus = 10000;
+        redElim = 1;
+      }
+      if (greenTeam.livesLeft == 0) {
+        redBonus = 10000;
+        greenElim = 1;
+      }
+
+      //assign a winner
+      let winner = "";
+      //if both teams were elimed or neither were, we go to score
+      //otherwise, winner determined by elim regardless of score
+      if (redElim == greenElim) {
+        if (redTeam.score + redBonus > greenTeam.score + greenBonus)
+          winner = "red";
+        else winner = "green";
+      } else if (redElim) winner = "green";
+      else if (greenElim) winner = "red";
+
       const insertGameQuery = {
         text:
-          "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,center_id,type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id",
+          "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,created,modified) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now(),now()) RETURNING id",
         values: [
           "Game @ " + output.game.starttime,
           "",
@@ -311,15 +339,18 @@ exports.handler = async event => {
           output.game.gameLength,
           redTeam.score,
           greenTeam.score,
-          0,
-          0,
-          center.rows[0].id,
-          "social"
+          redBonus,
+          greenBonus,
+          winner,
+          redElim,
+          greenElim,
+          "social",
+          center.rows[0].id
         ]
       };
       let game = await client.query(insertGameQuery);
 
-      const insertGameActionsQueryText =
+      /*const insertGameActionsQueryText =
         "INSERT INTO game_actions(action_time, action, game_id) VALUES($1, $2, $3) RETURNING id";
 
       for (let action of output.actions) {
@@ -328,7 +359,7 @@ exports.handler = async event => {
           action,
           game.rows[0].id
         ]);
-      }
+      }*/
     }
 
     await client.query("COMMIT");
