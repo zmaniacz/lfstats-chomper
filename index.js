@@ -9,6 +9,10 @@ const { Pool } = require("pg");
 const targetBucket = process.env.TARGET_BUCKET;
 const connectionString = process.env.DATABASE_URL;
 
+const pool = new Pool({
+  connectionString: connectionString
+});
+
 exports.handler = async event => {
   //console.log("Received event:", JSON.stringify(event, null, 2));
 
@@ -41,8 +45,8 @@ exports.handler = async event => {
     5: "Medic"
   };
   var output = {};
-  output.entities = {};
-  output.teams = {};
+  output.entities = [];
+  output.teams = [];
   output.actions = [];
   output.score_deltas = [];
 
@@ -86,7 +90,7 @@ exports.handler = async event => {
             normal_team = "green";
           }
 
-          output.teams[record[1]] = {
+          output.teams.splice(record[1], 0, {
             index: record[1],
             desc: record[2],
             color_enum: record[3],
@@ -94,10 +98,10 @@ exports.handler = async event => {
             score: 0,
             livesLeft: 0,
             normal_team: normal_team
-          };
+          });
         } else if (record[0] == 3) {
           //;3/entity-start	time	id	type	desc	team	level	category
-          output.entities[record[2]] = {
+          output.entities.push({
             start: parseInt(record[1]),
             ipl_id: record[2],
             type: record[3],
@@ -105,9 +109,9 @@ exports.handler = async event => {
             team: parseInt(record[5]),
             level: parseInt(record[6]),
             position: ENTITY_TYPES[record[7]],
-            hits: {},
-            missiles: {}
-          };
+            lfstats_id: null,
+            hits: []
+          });
         } else if (record[0] == 4) {
           //;4/event	time	type	varies
           output.actions.push({
@@ -119,23 +123,31 @@ exports.handler = async event => {
           });
 
           //track and total hits
-          if (record[2] == "0205" || record[2] == "0206") {
-            if (
-              typeof output.entities[record[3]].hits[record[5]] == "undefined"
-            ) {
-              output.entities[record[3]].hits[record[5]] = 0;
+          if (
+            record[2] == "0205" ||
+            record[2] == "0206" ||
+            record[2] == "0306"
+          ) {
+            let idx = output.entities.findIndex(
+              entity => entity.ipl_id == record[3]
+            );
+            let targetIdx = output.entities[idx].hits.findIndex(
+              target => target.ipl_id == record[5]
+            );
+
+            if (targetIdx == -1) {
+              targetIdx =
+                output.entities[idx].hits.push({
+                  ipl_id: record[5],
+                  hits: 0,
+                  missiles: 0
+                }) - 1;
             }
-            output.entities[record[3]].hits[record[5]] += 1;
-          }
-          //track and total missiles against players
-          if (record[2] == "0306") {
-            if (
-              typeof output.entities[record[3]].missiles[record[5]] ==
-              "undefined"
-            ) {
-              output.entities[record[3]].missiles[record[5]] = 0;
-            }
-            output.entities[record[3]].missiles[record[5]] += 1;
+
+            if (record[2] == "0205" || record[2] == "0206")
+              output.entities[idx].hits[targetIdx].hits += 1;
+            if (record[2] == "0306")
+              output.entities[idx].hits[targetIdx].missiles += 1;
           }
 
           //compute game start, end and length
@@ -158,20 +170,24 @@ exports.handler = async event => {
           });
         } else if (record[0] == 6) {
           //;6/entity-end	time	id	type	score
-          output.entities[record[2]] = {
+          let idx = output.entities.findIndex(
+            entity => entity.ipl_id == record[2]
+          );
+          output.entities[idx] = {
             end: parseInt(record[1]),
             score: parseInt(record[4]),
             survived:
-              (Math.round(
-                (record[1] - output.entities[record[2]].start) / 1000
-              ) *
+              (Math.round((record[1] - output.entities[idx].start) / 1000) *
                 1000) /
               1000,
-            ...output.entities[record[2]]
+            ...output.entities[idx]
           };
         } else if (record[0] == 7) {
           //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
-          output.entities[record[1]] = {
+          let idx = output.entities.findIndex(
+            entity => entity.ipl_id == record[1]
+          );
+          output.entities[idx] = {
             shotsHit: parseInt(record[2]),
             shotsFired: parseInt(record[3]),
             timesZapped: parseInt(record[4]),
@@ -195,22 +211,19 @@ exports.handler = async event => {
             shotTeam: parseInt(record[22]),
             missiledOpponent: parseInt(record[23]),
             missiledTeam: parseInt(record[24]),
-            ...output.entities[record[1]]
+            ...output.entities[idx]
           };
-          output.teams[output.entities[record[1]].team].livesLeft +=
-            output.entities[record[1]].livesLeft;
+          output.teams[output.entities[idx].team].livesLeft +=
+            output.entities[idx].livesLeft;
+          output.teams[output.entities[idx].team].score +=
+            output.entities[idx].score;
         }
       }
     });
     rl.on("error", () => {
       console.log("read error");
     });
-    rl.on("close", function() {
-      //total up team scores
-      for (const entity in output.entities) {
-        output.teams[output.entities[entity].team].score +=
-          output.entities[entity].score;
-      }
+    rl.on("close", async () => {
       resolve();
     });
   });
@@ -253,15 +266,6 @@ exports.handler = async event => {
   }
 
   //IMPORT PROCESS
-  //roll through the entities
-  //cehck for IPL match first, if exists, get id and move to next
-  //check for name && ipl_id is null - udpate ipl_id if found and get id
-  //create new player record
-  //NON IPL ENTITIES?????? - NULL player_id? lots of side effects but maybe best option - would allow deleting a lot of DB cruft
-  //null player_id would fuck up hits though
-  //maybe just update wth @ id
-
-  //if an ipl match is found, also check for aliases - if new alias on existing ipl, add alias
 
   //cehck for game center id and timestamp - if exists, abort
   //insert game and get id
@@ -275,12 +279,7 @@ exports.handler = async event => {
 
   //insert game actions and scorecard delta
 
-  //now let's go to the database
-  const pool = new Pool({
-    connectionString: connectionString
-  });
-
-  const client = await pool.connect();
+  /*const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
@@ -294,6 +293,38 @@ exports.handler = async event => {
       let center = await client.query("SELECT * from centers WHERE ipl_id=$1", [
         output.game.center
       ]);
+
+            //find or create lfstats player IDs
+
+        for (let entity of output.entities) {
+          if (entity.type == "player") {
+            let playerRecord = await client.query(
+              "SELECT * FROM players where ipl_id=$1",
+              [entity.ipl_id]
+            );
+            console.log("playerRecord", playerRecord);
+            if (playerRecord.rowCount > 0) {
+              //IPL exists, let's check if this is a new alias
+              entity.lfstats_id = playerRecord.rows[0].id;
+              //let playerNames = await client.query("SELECT * FROM players_names WHERE players_names.player_id=$1 AND players_names.player_name=$2",[playerRecord.rows[0].id,player.desc]);
+            } else {
+              //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
+              //otherwise create a brand new player
+            }
+          }
+        }
+
+
+      //let's get or create our player instances
+      //roll through the entities
+      //cehck for IPL match first, if exists, get id and move to next
+      //check for name && ipl_id is null - udpate ipl_id if found and get id
+      //create new player record
+      //NON IPL ENTITIES?????? - NULL player_id? lots of side effects but maybe best option - would allow deleting a lot of DB cruft
+      //null player_id would fuck up hits though
+      //maybe just update wth @ id
+
+      //start working on game details pre-insert
       //need to normalize team colors and determine elims before inserting the game
       let redTeam;
       let greenTeam;
@@ -331,7 +362,7 @@ exports.handler = async event => {
 
       const insertGameQuery = {
         text:
-          "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,created,modified) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now(),now()) RETURNING id",
+          "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
         values: [
           "Game @ " + output.game.starttime,
           "",
@@ -359,7 +390,7 @@ exports.handler = async event => {
           action,
           game.rows[0].id
         ]);
-      }*/
+      }
     }
 
     await client.query("COMMIT");
@@ -368,7 +399,7 @@ exports.handler = async event => {
     throw e;
   } finally {
     client.release();
-  }
+  }*/
 
   console.log("CHOMP COMPLETE");
 };
