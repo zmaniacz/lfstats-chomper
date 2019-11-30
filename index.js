@@ -224,6 +224,7 @@ exports.handler = async event => {
       console.log("read error");
     });
     rl.on("close", async () => {
+      console.log("done reading");
       resolve();
     });
   });
@@ -279,42 +280,22 @@ exports.handler = async event => {
 
   //insert game actions and scorecard delta
 
-  /*const client = await pool.connect();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     //Let's see if the game already exists before we start doing too much
     let gameCount = await client.query(
-      "select count(games.id) from games inner join centers on games.center_id=centers.id where game_datetime=$1 and centers.ipl_id=$2",
+      "select games.id from games inner join centers on games.center_id=centers.id where game_datetime=$1 and centers.ipl_id=$2",
       [output.game.starttime, output.game.center]
     );
 
-    if (gameCount.rows[0].count == 0) {
+    if (gameCount.rowCount == 0) {
       let center = await client.query("SELECT * from centers WHERE ipl_id=$1", [
         output.game.center
       ]);
 
-            //find or create lfstats player IDs
-
-        for (let entity of output.entities) {
-          if (entity.type == "player") {
-            let playerRecord = await client.query(
-              "SELECT * FROM players where ipl_id=$1",
-              [entity.ipl_id]
-            );
-            console.log("playerRecord", playerRecord);
-            if (playerRecord.rowCount > 0) {
-              //IPL exists, let's check if this is a new alias
-              entity.lfstats_id = playerRecord.rows[0].id;
-              //let playerNames = await client.query("SELECT * FROM players_names WHERE players_names.player_id=$1 AND players_names.player_name=$2",[playerRecord.rows[0].id,player.desc]);
-            } else {
-              //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
-              //otherwise create a brand new player
-            }
-          }
-        }
-
-
+      //find or create lfstats player IDs
       //let's get or create our player instances
       //roll through the entities
       //cehck for IPL match first, if exists, get id and move to next
@@ -323,6 +304,64 @@ exports.handler = async event => {
       //NON IPL ENTITIES?????? - NULL player_id? lots of side effects but maybe best option - would allow deleting a lot of DB cruft
       //null player_id would fuck up hits though
       //maybe just update wth @ id
+      for (let player of output.entities) {
+        if (player.type == "player") {
+          let playerRecord = await client.query(
+            "SELECT * FROM players where ipl_id=$1",
+            [player.ipl_id]
+          );
+          console.log("byipl", playerRecord);
+          if (playerRecord.rowCount > 0) {
+            //IPL exists, let's save the lfstats id...yes we already wrote output to file, this is jsut for convenience
+            player.lfstats_id = playerRecord.rows[0].id;
+            //Is the player using a new alias?
+            let playerNames = await client.query(
+              "SELECT * FROM players_names WHERE players_names.player_id=$1 AND players_names.player_name=$2",
+              [player.lfstats_id, player.desc]
+            );
+            if (playerNames.rowCount == 0) {
+              //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
+              //let's set all other names to inactive
+              await client.query(
+                "UPDATE players_names SET is_active=false WHERE player_id=$1",
+                [player.lfstats_id]
+              );
+              //insert the new alias and make it active
+              await client.query(
+                "INSERT INTO players_names (player_id,player_name,is_active) VALUES ($1, $2, true)",
+                [player.lfstats_id, player.desc]
+              );
+            }
+          } else {
+            //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
+            //otherwise create a BRAND NEW player
+            let existingPlayer = await client.query(
+              "SELECT * FROM players_names WHERE player_name=$1",
+              [player.desc]
+            );
+            console.log("exsiting", existingPlayer);
+            if (existingPlayer.rowCount > 0) {
+              //Found a name, let's use it
+              player.lfstats_id = existingPlayer.rows[0].player_id;
+              await client.query("UPDATE players SET ipl_id=$1 WHERE id=$2", [
+                player.ipl_id,
+                player.lfstats_id
+              ]);
+            } else {
+              //ITS A FNG
+              let newPlayer = await client.query(
+                "INSERT INTO players (player_name,ipl_id) VALUES ($1,$2) RETURNING ID",
+                [player.desc, player.ipl_id]
+              );
+              player.lfstats_id = newPlayer.rows[0].id;
+              await client.query(
+                "INSERT INTO players_names (player_id,player_name,is_active) VALUES ($1, $2, true)",
+                [player.lfstats_id, player.desc]
+              );
+            }
+          }
+        }
+      }
 
       //start working on game details pre-insert
       //need to normalize team colors and determine elims before inserting the game
@@ -362,7 +401,7 @@ exports.handler = async event => {
 
       const insertGameQuery = {
         text:
-          "INSERT INTO games(game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
+          "INSERT INTO games (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
         values: [
           "Game @ " + output.game.starttime,
           "",
@@ -380,6 +419,7 @@ exports.handler = async event => {
         ]
       };
       let game = await client.query(insertGameQuery);
+      console.log("game", game);
 
       /*const insertGameActionsQueryText =
         "INSERT INTO game_actions(action_time, action, game_id) VALUES($1, $2, $3) RETURNING id";
@@ -390,7 +430,9 @@ exports.handler = async event => {
           action,
           game.rows[0].id
         ]);
-      }
+      }*/
+    } else {
+      console.log("game exist", gameCount);
     }
 
     await client.query("COMMIT");
@@ -399,7 +441,7 @@ exports.handler = async event => {
     throw e;
   } finally {
     client.release();
-  }*/
+  }
 
   console.log("CHOMP COMPLETE");
 };
