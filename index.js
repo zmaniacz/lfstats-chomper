@@ -251,7 +251,7 @@ exports.handler = async event => {
       .putObject(resultParams, function(err, data) {
         if (err) console.log(err, err.stack);
         // an error occurred
-        else console.log(data); // successful response
+        else console.log("Put JSON file", data); // successful response
       })
       .promise();
 
@@ -259,7 +259,7 @@ exports.handler = async event => {
       .copyObject(storageParams, function(err, data) {
         if (err) console.log(err, err.stack);
         // an error occurred
-        else console.log(data); // successful response
+        else console.log("Put TDF file", data); // successful response
       })
       .promise();
   } catch (err) {
@@ -310,7 +310,6 @@ exports.handler = async event => {
             "SELECT * FROM players where ipl_id=$1",
             [player.ipl_id]
           );
-          console.log("byipl", playerRecord);
           if (playerRecord.rowCount > 0) {
             //IPL exists, let's save the lfstats id...yes we already wrote output to file, this is jsut for convenience
             player.lfstats_id = playerRecord.rows[0].id;
@@ -339,7 +338,6 @@ exports.handler = async event => {
               "SELECT * FROM players_names WHERE player_name=$1",
               [player.desc]
             );
-            console.log("exsiting", existingPlayer);
             if (existingPlayer.rowCount > 0) {
               //Found a name, let's use it
               player.lfstats_id = existingPlayer.rows[0].player_id;
@@ -419,7 +417,6 @@ exports.handler = async event => {
         ]
       };
       let game = await client.query(insertGameQuery);
-      console.log("game", game);
 
       /*const insertGameActionsQueryText =
         "INSERT INTO game_actions(action_time, action, game_id) VALUES($1, $2, $3) RETURNING id";
@@ -431,8 +428,6 @@ exports.handler = async event => {
           game.rows[0].id
         ]);
       }*/
-    } else {
-      console.log("game exist", gameCount);
     }
 
     await client.query("COMMIT");
