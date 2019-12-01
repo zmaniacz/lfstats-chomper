@@ -118,14 +118,15 @@ exports.handler = async event => {
           entities.set(entity.ipl_id, entity);
         } else if (record[0] == 4) {
           //;4/event	time	type	varies
-          actions.push({
+          let action = {
             time: record[1],
             type: record[2],
-            player: record[3],
-            action: typeof record[4] == "undefined" ? "" : record[4],
-            target: typeof record[5] == "undefined" ? "" : record[5]
-          });
+            player: record[3]
+          };
+          if (typeof record[4] != "undefined") action.action = record[4];
+          if (typeof record[5] != "undefined") action.target = record[5];
 
+          actions.push(action);
           //track and total hits
           if (
             record[2] == "0205" ||
@@ -255,19 +256,19 @@ exports.handler = async event => {
 
   //insert game actions and scorecard delta
 
-  /*const client = await pool.connect();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     //Let's see if the game already exists before we start doing too much
     let gameCount = await client.query(
       "select games.id from games inner join centers on games.center_id=centers.id where game_datetime=$1 and centers.ipl_id=$2",
-      [output.game.starttime, output.game.center]
+      [game.starttime, game.center]
     );
 
     if (gameCount.rowCount == 0) {
       let center = await client.query("SELECT * from centers WHERE ipl_id=$1", [
-        output.game.center
+        game.center
       ]);
 
       //find or create lfstats player IDs
@@ -279,7 +280,7 @@ exports.handler = async event => {
       //NON IPL ENTITIES?????? - NULL player_id? lots of side effects but maybe best option - would allow deleting a lot of DB cruft
       //null player_id would fuck up hits though
       //maybe just update wth @ id
-      for (let player of output.entities) {
+      entities.forEach(async (player, key, map) => {
         if (player.type == "player") {
           let playerRecord = await client.query(
             "SELECT * FROM players where ipl_id=$1",
@@ -334,17 +335,16 @@ exports.handler = async event => {
             }
           }
         }
-      }
+        map.set(key, player);
+      });
 
       //start working on game details pre-insert
       //need to normalize team colors and determine elims before inserting the game
       let redTeam;
       let greenTeam;
-      for (const team in output.teams) {
-        if (output.teams[team].normal_team == "red")
-          redTeam = output.teams[team];
-        if (output.teams[team].normal_team == "green")
-          greenTeam = output.teams[team];
+      for (const [key, value] of teams) {
+        if (value.normal_team == "red") redTeam = value;
+        if (value.normal_team == "green") greenTeam = value;
       }
 
       //Assign elim bonuses
@@ -376,10 +376,10 @@ exports.handler = async event => {
         text:
           "INSERT INTO games (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
         values: [
-          "Game @ " + output.game.starttime,
+          "Game @ " + game.starttime,
           "",
-          output.game.starttime,
-          output.game.gameLength,
+          game.starttime,
+          game.gameLength,
           redTeam.score,
           greenTeam.score,
           redBonus,
@@ -391,16 +391,22 @@ exports.handler = async event => {
           center.rows[0].id
         ]
       };
-      let game = await client.query(insertGameQuery);
+      let gameRecord = await client.query(insertGameQuery);
 
-      /*const insertGameActionsQueryText =
+      const insertGameActionsQueryText =
         "INSERT INTO game_actions(action_time, action, game_id) VALUES($1, $2, $3) RETURNING id";
 
-      for (let action of output.actions) {
+      for (let action of actions) {
+        if (entities.has(action.player)) {
+          action.player_id = entities.get(action.player).lfstats_id;
+        }
+        if (entities.has(action.target)) {
+          action.target_id = entities.get(action.target).lfstats_id;
+        }
         await client.query(insertGameActionsQueryText, [
           action.time,
           action,
-          game.rows[0].id
+          gameRecord.rows[0].id
         ]);
       }
     }
@@ -411,7 +417,7 @@ exports.handler = async event => {
     throw e;
   } finally {
     client.release();
-  }*/
+  }
 
   console.log("CHOMP COMPLETE");
 };
