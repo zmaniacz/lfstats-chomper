@@ -272,16 +272,12 @@ exports.handler = async event => {
       ]);
 
       //find or create lfstats player IDs
-      //let's get or create our player instances
-      //roll through the entities
-      //cehck for IPL match first, if exists, get id and move to next
-      //check for name && ipl_id is null - udpate ipl_id if found and get id
-      //create new player record
-      //NON IPL ENTITIES?????? - NULL player_id? lots of side effects but maybe best option - would allow deleting a lot of DB cruft
-      //null player_id would fuck up hits though
-      //maybe just update wth @ id
       entities.forEach(async (player, key, map) => {
-        if (player.type == "player") {
+        if (player.type == "player" && player.ipl_id.startsWith("@")) {
+          //not a member, so assign the generic player id
+          player.lfstats_id = 0;
+        } else if (player.type == "player" && player.ipl_id.startsWith("#")) {
+          //member!
           let playerRecord = await client.query(
             "SELECT * FROM players where ipl_id=$1",
             [player.ipl_id]
