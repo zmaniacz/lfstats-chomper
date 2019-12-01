@@ -44,11 +44,13 @@ exports.handler = async event => {
     4: "Ammo Carrier",
     5: "Medic"
   };
-  var output = {};
-  output.entities = [];
-  output.teams = [];
-  output.actions = [];
-  output.score_deltas = [];
+
+  var entities = new Map();
+  var teams = new Map();
+  var game = {};
+  var metadata = {};
+  var actions = [];
+  var score_deltas = [];
 
   let chompFile = new Promise((resolve, reject) => {
     rl.on("line", line => {
@@ -58,21 +60,21 @@ exports.handler = async event => {
       } else {
         if (record[0] == 0) {
           //;0/version	file-version	program-version
-          output.metadata = {
+          metadata = {
             file_version: record[1],
             program_version: record[2]
           };
-          output.game = {
+          game = {
             center: record[3]
           };
         } else if (record[0] == 1) {
           //;1/mission	type	desc	start
-          output.game = {
+          game = {
             type: record[1],
             desc: record[2],
             start: parseInt(record[3]),
             starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
-            ...output.game
+            ...game
           };
         } else if (record[0] == 2) {
           //;2/team	index	desc	colour-enum	colour-desc
@@ -90,7 +92,7 @@ exports.handler = async event => {
             normal_team = "green";
           }
 
-          output.teams.splice(record[1], 0, {
+          let team = {
             index: record[1],
             desc: record[2],
             color_enum: record[3],
@@ -98,23 +100,25 @@ exports.handler = async event => {
             score: 0,
             livesLeft: 0,
             normal_team: normal_team
-          });
+          };
+          teams.set(team.index, team);
         } else if (record[0] == 3) {
           //;3/entity-start	time	id	type	desc	team	level	category
-          output.entities.push({
+          let entity = {
             start: parseInt(record[1]),
             ipl_id: record[2],
             type: record[3],
             desc: record[4],
-            team: parseInt(record[5]),
+            team: record[5],
             level: parseInt(record[6]),
             position: ENTITY_TYPES[record[7]],
             lfstats_id: null,
-            hits: []
-          });
+            hits: new Map()
+          };
+          entities.set(entity.ipl_id, entity);
         } else if (record[0] == 4) {
           //;4/event	time	type	varies
-          output.actions.push({
+          actions.push({
             time: record[1],
             type: record[2],
             player: record[3],
@@ -128,40 +132,35 @@ exports.handler = async event => {
             record[2] == "0206" ||
             record[2] == "0306"
           ) {
-            let idx = output.entities.findIndex(
-              entity => entity.ipl_id == record[3]
-            );
-            let targetIdx = output.entities[idx].hits.findIndex(
-              target => target.ipl_id == record[5]
-            );
+            let player = entities.get(record[3]);
+            let target = entities.get(record[5]);
 
-            if (targetIdx == -1) {
-              targetIdx =
-                output.entities[idx].hits.push({
-                  ipl_id: record[5],
-                  hits: 0,
-                  missiles: 0
-                }) - 1;
+            if (!player.hits.has(target.ipl_id)) {
+              player.hits.set(target.ipl_id, {
+                ipl_id: target.ipl_id,
+                hits: 0,
+                missiles: 0
+              });
             }
 
             if (record[2] == "0205" || record[2] == "0206")
-              output.entities[idx].hits[targetIdx].hits += 1;
+              player.hits.get(target.ipl_id).hits += 1;
             if (record[2] == "0306")
-              output.entities[idx].hits[targetIdx].missiles += 1;
+              player.hits.get(target.ipl_id).missiles += 1;
           }
 
           //compute game start, end and length
           if (record[2] == "0101") {
             let gameLength;
             gameLength = (Math.round(record[1] / 1000) * 1000) / 1000;
-            output.game.endtime = moment(output.game.start, "YYYYMMDDHHmmss")
+            game.endtime = moment(game.start, "YYYYMMDDHHmmss")
               .seconds(gameLength)
               .format();
-            output.game.gameLength = gameLength;
+            game.gameLength = gameLength;
           }
         } else if (record[0] == 5) {
           //;5/score	time	entity	old	delta	new
-          output.score_deltas.push({
+          score_deltas.push({
             time: record[1],
             player: record[2],
             old: record[3],
@@ -170,24 +169,19 @@ exports.handler = async event => {
           });
         } else if (record[0] == 6) {
           //;6/entity-end	time	id	type	score
-          let idx = output.entities.findIndex(
-            entity => entity.ipl_id == record[2]
-          );
-          output.entities[idx] = {
+          let player = entities.get(record[2]);
+          player = {
             end: parseInt(record[1]),
             score: parseInt(record[4]),
             survived:
-              (Math.round((record[1] - output.entities[idx].start) / 1000) *
-                1000) /
-              1000,
-            ...output.entities[idx]
+              (Math.round((record[1] - player.start) / 1000) * 1000) / 1000,
+            ...player
           };
+          entities.set(player.ipl_id, player);
         } else if (record[0] == 7) {
           //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
-          let idx = output.entities.findIndex(
-            entity => entity.ipl_id == record[1]
-          );
-          output.entities[idx] = {
+          let player = entities.get(record[1]);
+          player = {
             shotsHit: parseInt(record[2]),
             shotsFired: parseInt(record[3]),
             timesZapped: parseInt(record[4]),
@@ -211,12 +205,10 @@ exports.handler = async event => {
             shotTeam: parseInt(record[22]),
             missiledOpponent: parseInt(record[23]),
             missiledTeam: parseInt(record[24]),
-            ...output.entities[idx]
+            ...player
           };
-          output.teams[output.entities[idx].team].livesLeft +=
-            output.entities[idx].livesLeft;
-          output.teams[output.entities[idx].team].score +=
-            output.entities[idx].score;
+          teams.get(player.team).livesLeft += player.livesLeft;
+          teams.get(player.team).score += player.score;
         }
       }
     });
@@ -232,28 +224,11 @@ exports.handler = async event => {
   try {
     await chompFile;
 
-    const resultParams = {
-      Bucket: targetBucket,
-      Key: `${output.game.center}_${
-        output.game.start
-      }_${output.game.desc.replace(/ /g, "-")}.json`,
-      Body: JSON.stringify(output, null, 4)
-    };
-
     const storageParams = {
       CopySource: bucket + "/" + key,
       Bucket: targetBucket,
-      Key: `${output.game.center}_${
-        output.game.start
-      }_${output.game.desc.replace(/ /g, "-")}.tdf`
+      Key: `${game.center}_${game.start}_${game.desc.replace(/ /g, "-")}.tdf`
     };
-    await s3
-      .putObject(resultParams, function(err, data) {
-        if (err) console.log(err, err.stack);
-        // an error occurred
-        else console.log("Put JSON file", data); // successful response
-      })
-      .promise();
 
     await s3
       .copyObject(storageParams, function(err, data) {
@@ -280,7 +255,7 @@ exports.handler = async event => {
 
   //insert game actions and scorecard delta
 
-  const client = await pool.connect();
+  /*const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
@@ -427,7 +402,7 @@ exports.handler = async event => {
           action,
           game.rows[0].id
         ]);
-      }*/
+      }
     }
 
     await client.query("COMMIT");
@@ -436,7 +411,7 @@ exports.handler = async event => {
     throw e;
   } finally {
     client.release();
-  }
+  }*/
 
   console.log("CHOMP COMPLETE");
 };
