@@ -3,12 +3,12 @@ const readline = require("readline");
 const moment = require("moment");
 const iconv = require("iconv-lite");
 const AutoDetectDecoderStream = require("autodetect-decoder-stream");
-const s3 = new aws.S3({ apiVersion: "2006-03-01" });
-const { Pool } = require("pg");
 const { createPool, sql } = require("slonik");
 
 const targetBucket = process.env.TARGET_BUCKET;
 const connectionString = process.env.DATABASE_URL;
+
+const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 
 const pool = createPool(connectionString);
 
@@ -112,6 +112,8 @@ exports.handler = async event => {
             level: parseInt(record[6]),
             position: ENTITY_TYPES[record[7]],
             lfstats_id: null,
+            resupplies: 0,
+            bases_destroyed: 0,
             hits: new Map()
           };
           entities.set(entity.ipl_id, entity);
@@ -126,6 +128,7 @@ exports.handler = async event => {
           if (typeof record[5] != "undefined") action.target = record[5];
 
           actions.push(action);
+
           //track and total hits
           if (
             record[2] == "0205" ||
@@ -158,6 +161,16 @@ exports.handler = async event => {
               .format();
             game.gameLength = gameLength;
           }
+
+          //sum up total resupplies
+          if (record[2] == "0500" || record[2] == "0502") {
+            entities.get(record[3]).resupplies += 1;
+          }
+
+          //sum up total bases destroyed
+          if (record[2] == "0303" || record[2] == "0204") {
+            entities.get(record[3]).bases_destroyed += 1;
+          }
         } else if (record[0] == 5) {
           //;5/score	time	entity	old	delta	new
           score_deltas.push({
@@ -182,6 +195,16 @@ exports.handler = async event => {
           //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
           let player = entities.get(record[1]);
           player = {
+            accuracy: parseInt(record[2]) / Math.max(parseInt(record[3]), 1),
+            hit_diff: parseInt(record[21]) / Math.max(parseInt(record[4]), 1),
+            sp_earned:
+              parseInt(record[21]) +
+              parseInt(record[23]) * 2 +
+              player.bases_destroyed * 5,
+            sp_spent:
+              parseInt(record[8]) * 20 +
+              parseInt(record[14]) * 10 +
+              parseInt(record[15]) * 15,
             shotsHit: parseInt(record[2]),
             shotsFired: parseInt(record[3]),
             timesZapped: parseInt(record[4]),
@@ -207,6 +230,7 @@ exports.handler = async event => {
             missiledTeam: parseInt(record[24]),
             ...player
           };
+          entities.set(record[1], player);
           teams.get(player.team).livesLeft += player.livesLeft;
           teams.get(player.team).score += player.score;
         }
@@ -397,7 +421,127 @@ exports.handler = async event => {
               (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
             RETURNING id
           `);
-          let newGameId = gameRecord.rows[0].id;
+          let newGame = gameRecord.rows[0];
+
+          //insert the scorecards
+          for (const [key, player] of entities) {
+            if (player.type == "player") {
+              playerTeam = teams.get(player.team).normal_team;
+
+              let team_elim = 0;
+              let elim_other_team = 0;
+              if (
+                (redElim && playerTeam == "red") ||
+                (greenElim && playerTeam == "green")
+              )
+                team_elim = 1;
+              if (
+                (redElim && playerTeam == "green") ||
+                (greenElim && playerTeam == "red")
+              )
+                elim_other_team = 1;
+
+              let scorecardRecord = await client.query(sql`
+                INSERT INTO scorecards
+                  (
+                    player_name,
+                    game_datetime,
+                    team,
+                    position,
+                    survived,
+                    shots_hit,
+                    shots_fired,
+                    times_zapped,
+                    times_missiled,
+                    missile_hits,
+                    nukes_activated,
+                    nukes_detonated,
+                    nukes_canceled,
+                    medic_hits,
+                    own_medic_hits,
+                    medic_nukes,
+                    scout_rapid,
+                    life_boost,
+                    ammo_boost,
+                    lives_left,
+                    score,
+                    max_score,
+                    shots_left,
+                    penalties,
+                    shot_3hit,
+                    elim_other_team,
+                    team_elim,
+                    own_nuke_cancels,
+                    shot_opponent,
+                    shot_team,
+                    missiled_opponent,
+                    missiled_team,
+                    resupplies,
+                    rank,
+                    bases_destroyed,
+                    accuracy,
+                    hit_diff,
+                    mvp_points,
+                    mvp_details,
+                    sp_earned,
+                    sp_spent,
+                    game_id,
+                    type,
+                    player_id,
+                    center_id
+                  )
+                VALUES
+                  (
+                    ${player.desc},
+                    ${game.starttime},
+                    ${playerTeam},
+                    ${player.position},
+                    ${player.survived},
+                    ${player.shotsHit},
+                    ${player.shotsFired},
+                    ${player.timesZapped},
+                    ${player.timesMissiled},
+                    ${player.missileHits},
+                    ${player.nukesActivated},
+                    ${player.nukesDetonated},
+                    ${player.nukeCancels},
+                    ${player.medicHits},
+                    ${player.ownMedicHits},
+                    ${player.medicNukes},
+                    ${player.scoutRapid},
+                    ${player.lifeBoost},
+                    ${player.ammoBoost},
+                    ${player.livesLeft},
+                    ${player.scoutRapid},
+                    0,
+                    ${player.shotsLeft},
+                    ${player.penalties},
+                    ${player.shot3Hit},
+                    ${elim_other_team},
+                    ${team_elim},
+                    ${player.ownNukeCancels},
+                    ${player.shotOpponent},
+                    ${player.shotTeam},
+                    ${player.missiledOpponent},
+                    ${player.missiledTeam},
+                    ${player.resupplies},
+                    0,
+                    ${player.bases_destroyed},
+                    ${player.accuracy},
+                    ${player.hit_diff},
+                    0,
+                    ${null},
+                    ${player.sp_earned},
+                    ${player.sp_spent},
+                    ${newGame.id},
+                    'social',
+                    ${player.lfstats_id},
+                    ${center.id}
+                  )
+                  RETURNING id
+              `);
+            }
+          }
 
           //insert the actions
           for (let action of actions) {
@@ -412,7 +556,7 @@ exports.handler = async event => {
               INSERT INTO game_actions
                 (action_time, action_body, game_id) 
               VALUES
-                (${action.time}, ${JSON.stringify(action)}, ${newGameId})
+                (${action.time}, ${JSON.stringify(action)}, ${newGame.id})
             `);
           }
 
@@ -424,7 +568,7 @@ exports.handler = async event => {
               INSERT INTO score_deltas
                 (old, delta, new, player_id, game_id) 
               VALUES
-                (${delta.old}, ${delta.delta}, ${delta.new},${player_id},${newGameId})
+                (${delta.old}, ${delta.delta}, ${delta.new},${player_id},${newGame.id})
             `);
           }
         }
