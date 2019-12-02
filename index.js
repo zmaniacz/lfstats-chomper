@@ -5,13 +5,12 @@ const iconv = require("iconv-lite");
 const AutoDetectDecoderStream = require("autodetect-decoder-stream");
 const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 const { Pool } = require("pg");
+const { createPool, sql } = require("slonik");
 
 const targetBucket = process.env.TARGET_BUCKET;
 const connectionString = process.env.DATABASE_URL;
 
-const pool = new Pool({
-  connectionString: connectionString
-});
+const pool = createPool(connectionString);
 
 exports.handler = async event => {
   //console.log("Received event:", JSON.stringify(event, null, 2));
@@ -243,9 +242,6 @@ exports.handler = async event => {
   }
 
   //IMPORT PROCESS
-
-  //cehck for game center id and timestamp - if exists, abort
-  //insert game and get id
   //insaert the teams objects as well into a column on game - maybe use it in the future
 
   //insert scorecards with player id and game_id
@@ -256,164 +252,187 @@ exports.handler = async event => {
 
   //insert game actions and scorecard delta
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  await pool.connect(async connection => {
+    try {
+      await connection.transaction(async client => {
+        //Let's see if the game already exists before we start doing too much
+        let gameExist = await client.maybeOne(
+          sql`SELECT games.id 
+              FROM games 
+              INNER JOIN centers ON games.center_id=centers.id 
+              WHERE game_datetime=${game.starttime} AND centers.ipl_id=${game.center}`
+        );
 
-    //Let's see if the game already exists before we start doing too much
-    let gameCount = await client.query(
-      "select games.id from games inner join centers on games.center_id=centers.id where game_datetime=$1 and centers.ipl_id=$2",
-      [game.starttime, game.center]
-    );
+        if (gameExist == null) {
+          let center = await client.one(sql`
+            SELECT *
+            FROM centers 
+            WHERE ipl_id=${game.center}
+          `);
 
-    if (gameCount.rowCount == 0) {
-      let center = await client.query("SELECT * from centers WHERE ipl_id=$1", [
-        game.center
-      ]);
+          //find or create lfstats player IDs
+          for (let [key, player] of entities) {
+            if (player.type == "player" && player.ipl_id.startsWith("@")) {
+              //not a member, so assign the generic player id
+              player.lfstats_id = 0;
+            } else if (
+              player.type == "player" &&
+              player.ipl_id.startsWith("#")
+            ) {
+              //member!
+              let playerRecord = await client.maybeOne(sql`
+                SELECT *
+                FROM players
+                WHERE ipl_id=${player.ipl_id}
+              `);
+              if (playerRecord != null) {
+                //IPL exists, let's save the lfstats id...yes we already wrote output to file, this is jsut for convenience
+                player.lfstats_id = playerRecord.id;
+                //set all aliases inactive
+                await client.query(sql`
+                  UPDATE players_names 
+                  SET is_active=false 
+                  WHERE player_id=${player.lfstats_id}
+                `);
 
-      //find or create lfstats player IDs
-      entities.forEach(async (player, key, map) => {
-        if (player.type == "player" && player.ipl_id.startsWith("@")) {
-          //not a member, so assign the generic player id
-          player.lfstats_id = 0;
-        } else if (player.type == "player" && player.ipl_id.startsWith("#")) {
-          //member!
-          let playerRecord = await client.query(
-            "SELECT * FROM players where ipl_id=$1",
-            [player.ipl_id]
-          );
-          if (playerRecord.rowCount > 0) {
-            //IPL exists, let's save the lfstats id...yes we already wrote output to file, this is jsut for convenience
-            player.lfstats_id = playerRecord.rows[0].id;
-            //Is the player using a new alias?
-            let playerNames = await client.query(
-              "SELECT * FROM players_names WHERE players_names.player_id=$1 AND players_names.player_name=$2",
-              [player.lfstats_id, player.desc]
-            );
-            if (playerNames.rowCount == 0) {
-              //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
-              //let's set all other names to inactive
-              await client.query(
-                "UPDATE players_names SET is_active=false WHERE player_id=$1",
-                [player.lfstats_id]
-              );
-              //insert the new alias and make it active
-              await client.query(
-                "INSERT INTO players_names (player_id,player_name,is_active) VALUES ($1, $2, true)",
-                [player.lfstats_id, player.desc]
-              );
+                //Is the player using a new alias?
+                let playerNames = await client.maybeOne(sql`
+                  SELECT * 
+                  FROM players_names 
+                  WHERE players_names.player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
+                `);
+                if (playerNames == null) {
+                  //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
+                  //insert the new alias and make it active
+                  await client.query(sql`
+                    INSERT INTO players_names (player_id,player_name,is_active) 
+                    VALUES (${player.lfstats_id}, ${player.desc}, true)
+                  `);
+                } else {
+                  //existing alias, make it active
+                  await client.query(sql`
+                    UPDATE players_names 
+                    SET is_active=true 
+                    WHERE player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
+                  `);
+                }
+                //update the player record with the new active alias
+                await client.query(sql`
+                  UPDATE players 
+                  SET player_name=${player.desc} 
+                  WHERE id=${player.lfstats_id}
+                `);
+              } else {
+                //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
+                //otherwise create a BRAND NEW player
+                let existingPlayer = await client.maybeOne(sql`
+                  SELECT * 
+                  FROM players_names 
+                  WHERE player_name=${player.desc}
+                `);
+                if (existingPlayer != null) {
+                  //Found a name, let's use it
+                  player.lfstats_id = existingPlayer.player_id;
+                  await client.query(sql`
+                    UPDATE players 
+                    SET ipl_id=${player.ipl_id} 
+                    WHERE id=${player.lfstats_id}
+                  `);
+                } else {
+                  //ITS A FNG
+                  let newPlayer = await client.query(sql`
+                    INSERT INTO players (player_name,ipl_id) 
+                    VALUES (${player.desc},${player.ipl_id})
+                  `);
+                  player.lfstats_id = newPlayer.id;
+                  await client.query(sql`
+                    INSERT INTO players_names (player_id,player_name,is_active) 
+                    VALUES (${player.lfstats_id}, ${player.desc}, true)
+                  `);
+                }
+              }
             }
-          } else {
-            //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
-            //otherwise create a BRAND NEW player
-            let existingPlayer = await client.query(
-              "SELECT * FROM players_names WHERE player_name=$1",
-              [player.desc]
-            );
-            if (existingPlayer.rowCount > 0) {
-              //Found a name, let's use it
-              player.lfstats_id = existingPlayer.rows[0].player_id;
-              await client.query("UPDATE players SET ipl_id=$1 WHERE id=$2", [
-                player.ipl_id,
-                player.lfstats_id
-              ]);
-            } else {
-              //ITS A FNG
-              let newPlayer = await client.query(
-                "INSERT INTO players (player_name,ipl_id) VALUES ($1,$2) RETURNING ID",
-                [player.desc, player.ipl_id]
-              );
-              player.lfstats_id = newPlayer.rows[0].id;
-              await client.query(
-                "INSERT INTO players_names (player_id,player_name,is_active) VALUES ($1, $2, true)",
-                [player.lfstats_id, player.desc]
-              );
+            entities.set(key, player);
+          }
+          //start working on game details pre-insert
+          //need to normalize team colors and determine elims before inserting the game
+          let redTeam;
+          let greenTeam;
+          for (const [key, value] of teams) {
+            if (value.normal_team == "red") redTeam = value;
+            if (value.normal_team == "green") greenTeam = value;
+          }
+
+          //Assign elim bonuses
+          let greenBonus = 0,
+            redBonus = 0;
+          let redElim = 0,
+            greenElim = 0;
+          if (redTeam.livesLeft == 0) {
+            greenBonus = 10000;
+            redElim = 1;
+          }
+          if (greenTeam.livesLeft == 0) {
+            redBonus = 10000;
+            greenElim = 1;
+          }
+
+          //assign a winner
+          let winner = "";
+          //if both teams were elimed or neither were, we go to score
+          //otherwise, winner determined by elim regardless of score
+          if (redElim == greenElim) {
+            if (redTeam.score + redBonus > greenTeam.score + greenBonus)
+              winner = "red";
+            else winner = "green";
+          } else if (redElim) winner = "green";
+          else if (greenElim) winner = "red";
+
+          game.name = `Game @ ${game.starttime}`;
+
+          let gameRecord = await client.query(sql`
+            INSERT INTO games 
+              (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id)
+            VALUES
+              (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
+            RETURNING id
+          `);
+          let newGameId = gameRecord.rows[0].id;
+
+          //insert the actions
+          for (let action of actions) {
+            if (entities.has(action.player)) {
+              action.player_id = entities.get(action.player).lfstats_id;
             }
+            if (entities.has(action.target)) {
+              action.target_id = entities.get(action.target).lfstats_id;
+            }
+
+            await client.query(sql`
+              INSERT INTO game_actions
+                (action_time, action_body, game_id) 
+              VALUES
+                (${action.time}, ${JSON.stringify(action)}, ${newGameId})
+            `);
+          }
+
+          //insert the score deltas
+          for (const delta of score_deltas) {
+            let player_id = entities.get(delta.player).lfstats_id;
+
+            await client.query(sql`
+              INSERT INTO score_deltas
+                (old, delta, new, player_id, game_id) 
+              VALUES
+                (${delta.old}, ${delta.delta}, ${delta.new},${player_id},${newGameId})
+            `);
           }
         }
-        map.set(key, player);
       });
-
-      //start working on game details pre-insert
-      //need to normalize team colors and determine elims before inserting the game
-      let redTeam;
-      let greenTeam;
-      for (const [key, value] of teams) {
-        if (value.normal_team == "red") redTeam = value;
-        if (value.normal_team == "green") greenTeam = value;
-      }
-
-      //Assign elim bonuses
-      let greenBonus = 0,
-        redBonus = 0;
-      let redElim = 0,
-        greenElim = 0;
-      if (redTeam.livesLeft == 0) {
-        greenBonus = 10000;
-        redElim = 1;
-      }
-      if (greenTeam.livesLeft == 0) {
-        redBonus = 10000;
-        greenElim = 1;
-      }
-
-      //assign a winner
-      let winner = "";
-      //if both teams were elimed or neither were, we go to score
-      //otherwise, winner determined by elim regardless of score
-      if (redElim == greenElim) {
-        if (redTeam.score + redBonus > greenTeam.score + greenBonus)
-          winner = "red";
-        else winner = "green";
-      } else if (redElim) winner = "green";
-      else if (greenElim) winner = "red";
-
-      const insertGameQuery = {
-        text:
-          "INSERT INTO games (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
-        values: [
-          "Game @ " + game.starttime,
-          "",
-          game.starttime,
-          game.gameLength,
-          redTeam.score,
-          greenTeam.score,
-          redBonus,
-          greenBonus,
-          winner,
-          redElim,
-          greenElim,
-          "social",
-          center.rows[0].id
-        ]
-      };
-      let gameRecord = await client.query(insertGameQuery);
-
-      const insertGameActionsQueryText =
-        "INSERT INTO game_actions(action_time, action, game_id) VALUES($1, $2, $3) RETURNING id";
-
-      for (let action of actions) {
-        if (entities.has(action.player)) {
-          action.player_id = entities.get(action.player).lfstats_id;
-        }
-        if (entities.has(action.target)) {
-          action.target_id = entities.get(action.target).lfstats_id;
-        }
-        await client.query(insertGameActionsQueryText, [
-          action.time,
-          action,
-          gameRecord.rows[0].id
-        ]);
-      }
+    } catch (e) {
+      throw e;
     }
-
-    await client.query("COMMIT");
-  } catch (e) {
-    await client.query("ROLLBACK");
-    throw e;
-  } finally {
-    client.release();
-  }
+  });
 
   console.log("CHOMP COMPLETE");
 };
