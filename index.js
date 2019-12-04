@@ -266,16 +266,12 @@ exports.handler = async event => {
   }
 
   //IMPORT PROCESS
-  //insaert the teams objects as well into a column on game - maybe use it in the future
-
-  //insert scorecards with player id and game_id
-  //will default to evnet_id NULL whihc will put them in the review queue
-
+  //TODO
   //insert hit stats
   //insert missile stats
-
-  //insert game actions and scorecard delta
-
+  //penalties
+  //mvp calcs
+  //log gens and targets somehow in the actions
   await pool.connect(async connection => {
     try {
       await connection.transaction(async client => {
@@ -309,6 +305,7 @@ exports.handler = async event => {
                 FROM players
                 WHERE ipl_id=${player.ipl_id}
               `);
+
               if (playerRecord != null) {
                 //IPL exists, let's save the lfstats id...yes we already wrote output to file, this is jsut for convenience
                 player.lfstats_id = playerRecord.id;
@@ -325,6 +322,7 @@ exports.handler = async event => {
                   FROM players_names 
                   WHERE players_names.player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
                 `);
+
                 if (playerNames == null) {
                   //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
                   //insert the new alias and make it active
@@ -354,6 +352,7 @@ exports.handler = async event => {
                   FROM players_names 
                   WHERE player_name=${player.desc}
                 `);
+
                 if (existingPlayer != null) {
                   //Found a name, let's use it
                   player.lfstats_id = existingPlayer.player_id;
@@ -367,8 +366,10 @@ exports.handler = async event => {
                   let newPlayer = await client.query(sql`
                     INSERT INTO players (player_name,ipl_id) 
                     VALUES (${player.desc},${player.ipl_id})
+                    RETURNING id
                   `);
-                  player.lfstats_id = newPlayer.id;
+
+                  player.lfstats_id = newPlayer.rows[0].id;
                   await client.query(sql`
                     INSERT INTO players_names (player_id,player_name,is_active) 
                     VALUES (${player.lfstats_id}, ${player.desc}, true)
