@@ -267,10 +267,6 @@ exports.handler = async event => {
 
   //IMPORT PROCESS
   //TODO
-  //insert hit stats
-  //insert missile stats
-  //penalties
-  //mvp calcs
   //log gens and targets somehow in the actions
   await pool.connect(async connection => {
     try {
@@ -412,8 +408,7 @@ exports.handler = async event => {
             else winner = "green";
           } else if (redElim) winner = "green";
           else if (greenElim) winner = "red";
-
-          game.name = `Game @ ${game.starttime}`;
+          game.name = `Game @ ${moment(game.starttime).format("HH:mm:ss")}`;
 
           let gameRecord = await client.query(sql`
             INSERT INTO games 
@@ -513,7 +508,7 @@ exports.handler = async event => {
                     ${player.lifeBoost},
                     ${player.ammoBoost},
                     ${player.livesLeft},
-                    ${player.scoutRapid},
+                    ${player.score},
                     0,
                     ${player.shotsLeft},
                     ${player.penalties},
@@ -570,9 +565,13 @@ exports.handler = async event => {
             `);
           }
 
-          //update all the actions and score_deltas to include an lfstats id for the player and the target where applicable
+          //Let's iterate through the entities and make some udpates in the database
+          //1-Tie an internal lfstats id to players and targets in each action
+          //2-Tie an internal lfstats id to each score delta
+          //3-insert the hit and missile stats for ech player
           for (let [key, player] of entities) {
             if (player.type == "player" && player.ipl_id.startsWith("#")) {
+              //1
               let playerString = `{"player_id": ${player.lfstats_id}}`;
               let targetString = `{"target_id": ${player.lfstats_id}}`;
               await client.query(sql`
@@ -589,6 +588,7 @@ exports.handler = async event => {
                   AND
                       game_id = ${newGame.id}
               `);
+              //2
               await client.query(sql`
                 UPDATE score_deltas
                 SET player_id = ${player.lfstats_id}
@@ -596,6 +596,7 @@ exports.handler = async event => {
                   AND
                       game_id = ${newGame.id}
               `);
+              //3
             }
           }
         }
