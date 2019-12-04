@@ -307,7 +307,7 @@ exports.handler = async event => {
               `);
 
               if (playerRecord != null) {
-                //IPL exists, let's save the lfstats id...yes we already wrote output to file, this is jsut for convenience
+                //IPL exists, let's save the lfstats id
                 player.lfstats_id = playerRecord.id;
                 //set all aliases inactive
                 await client.query(sql`
@@ -544,15 +544,12 @@ exports.handler = async event => {
             }
           }
 
+          //fix penalties
+
+          //insert hit and missile stats
+
           //insert the actions
           for (let action of actions) {
-            if (entities.has(action.player)) {
-              action.player_id = entities.get(action.player).lfstats_id;
-            }
-            if (entities.has(action.target)) {
-              action.target_id = entities.get(action.target).lfstats_id;
-            }
-
             await client.query(sql`
               INSERT INTO game_actions
                 (action_time, action_body, game_id) 
@@ -563,14 +560,43 @@ exports.handler = async event => {
 
           //insert the score deltas
           for (const delta of score_deltas) {
-            let player_id = entities.get(delta.player).lfstats_id;
+            //let player_id = entities.get(delta.player).lfstats_id;
 
             await client.query(sql`
               INSERT INTO score_deltas
-                (old, delta, new, player_id, game_id) 
+                (score_time, old, delta, new, ipl_id, player_id, game_id) 
               VALUES
-                (${delta.old}, ${delta.delta}, ${delta.new},${player_id},${newGame.id})
+                (${delta.time},${delta.old}, ${delta.delta}, ${delta.new}, ${delta.player}, null, ${newGame.id})
             `);
+          }
+
+          //update all the actions and score_deltas to include an lfstats id for the player and the target where applicable
+          for (let [key, player] of entities) {
+            if (player.type == "player" && player.ipl_id.startsWith("#")) {
+              let playerString = `{"player_id": ${player.lfstats_id}}`;
+              let targetString = `{"target_id": ${player.lfstats_id}}`;
+              await client.query(sql`
+                UPDATE game_actions
+                SET action_body = action_body || ${playerString}
+                WHERE action_body->>'player' = ${player.ipl_id}
+                  AND
+                      game_id = ${newGame.id}
+              `);
+              await client.query(sql`
+                UPDATE game_actions
+                SET action_body = action_body || ${targetString}
+                WHERE action_body->>'target' = ${player.ipl_id}
+                  AND
+                      game_id = ${newGame.id}
+              `);
+              await client.query(sql`
+                UPDATE score_deltas
+                SET player_id = ${player.lfstats_id}
+                WHERE ipl_id = ${player.ipl_id}
+                  AND
+                      game_id = ${newGame.id}
+              `);
+            }
           }
         }
       });
