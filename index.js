@@ -13,7 +13,8 @@ const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 const pool = createPool(connectionString);
 
 exports.handler = async event => {
-  //console.log("Received event:", JSON.stringify(event, null, 2));
+  console.log("BEGIN CHOMP");
+  console.log("Received event:", JSON.stringify(event, null, 2));
 
   const bucket = event.Records[0].s3.bucket.name;
   const key = decodeURIComponent(
@@ -237,10 +238,10 @@ exports.handler = async event => {
       }
     });
     rl.on("error", () => {
-      console.log("read error");
+      console.log("READ ERROR");
     });
     rl.on("close", async () => {
-      console.log("done reading");
+      console.log("READ COMPLETE");
       resolve();
     });
   });
@@ -258,186 +259,183 @@ exports.handler = async event => {
       .copyObject(storageParams, function(err, data) {
         if (err) console.log(err, err.stack);
         // an error occurred
-        else console.log("Put TDF file", data); // successful response
+        else console.log("MOVED TDF TO ARCHIVE", data); // successful response
       })
       .promise();
-  } catch (err) {
-    console.log("Error", err.stack);
-  }
 
-  //IMPORT PROCESS
-  //TODO
-  //log gens and targets somehow in the actions
-  await pool.connect(async connection => {
-    try {
-      await connection.transaction(async client => {
-        //Let's see if the game already exists before we start doing too much
-        let gameExist = await client.maybeOne(
-          sql`SELECT games.id 
+    //IMPORT PROCESS
+    //TODO
+    //log gens and targets somehow in the actions
+    await pool.connect(async connection => {
+      try {
+        await connection.transaction(async client => {
+          //Let's see if the game already exists before we start doing too much
+          let gameExist = await client.maybeOne(
+            sql`SELECT games.id 
               FROM games 
               INNER JOIN centers ON games.center_id=centers.id 
               WHERE game_datetime=${game.starttime} AND centers.ipl_id=${game.center}`
-        );
+          );
 
-        if (gameExist == null) {
-          let center = await client.one(sql`
+          if (gameExist == null) {
+            let center = await client.one(sql`
             SELECT *
             FROM centers 
             WHERE ipl_id=${game.center}
           `);
 
-          //find or create lfstats player IDs
-          for (let [key, player] of entities) {
-            if (player.type == "player" && player.ipl_id.startsWith("@")) {
-              //not a member, so assign the generic player id
-              player.lfstats_id = 0;
-            } else if (
-              player.type == "player" &&
-              player.ipl_id.startsWith("#")
-            ) {
-              //member!
-              let playerRecord = await client.maybeOne(sql`
+            //find or create lfstats player IDs
+            for (let [key, player] of entities) {
+              if (player.type == "player" && player.ipl_id.startsWith("@")) {
+                //not a member, so assign the generic player id
+                player.lfstats_id = 0;
+              } else if (
+                player.type == "player" &&
+                player.ipl_id.startsWith("#")
+              ) {
+                //member!
+                let playerRecord = await client.maybeOne(sql`
                 SELECT *
                 FROM players
                 WHERE ipl_id=${player.ipl_id}
               `);
 
-              if (playerRecord != null) {
-                //IPL exists, let's save the lfstats id
-                player.lfstats_id = playerRecord.id;
-                //set all aliases inactive
-                await client.query(sql`
+                if (playerRecord != null) {
+                  //IPL exists, let's save the lfstats id
+                  player.lfstats_id = playerRecord.id;
+                  //set all aliases inactive
+                  await client.query(sql`
                   UPDATE players_names 
                   SET is_active=false 
                   WHERE player_id=${player.lfstats_id}
                 `);
 
-                //Is the player using a new alias?
-                let playerNames = await client.maybeOne(sql`
+                  //Is the player using a new alias?
+                  let playerNames = await client.maybeOne(sql`
                   SELECT * 
                   FROM players_names 
                   WHERE players_names.player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
                 `);
 
-                if (playerNames == null) {
-                  //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
-                  //insert the new alias and make it active
-                  await client.query(sql`
+                  if (playerNames == null) {
+                    //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
+                    //insert the new alias and make it active
+                    await client.query(sql`
                     INSERT INTO players_names (player_id,player_name,is_active) 
                     VALUES (${player.lfstats_id}, ${player.desc}, true)
                   `);
-                } else {
-                  //existing alias, make it active
-                  await client.query(sql`
+                  } else {
+                    //existing alias, make it active
+                    await client.query(sql`
                     UPDATE players_names 
                     SET is_active=true 
                     WHERE player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
                   `);
-                }
-                //update the player record with the new active alias
-                await client.query(sql`
+                  }
+                  //update the player record with the new active alias
+                  await client.query(sql`
                   UPDATE players 
                   SET player_name=${player.desc} 
                   WHERE id=${player.lfstats_id}
                 `);
-              } else {
-                //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
-                //otherwise create a BRAND NEW player
-                let existingPlayer = await client.maybeOne(sql`
+                } else {
+                  //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
+                  //otherwise create a BRAND NEW player
+                  let existingPlayer = await client.maybeOne(sql`
                   SELECT * 
                   FROM players_names 
                   WHERE player_name=${player.desc}
                 `);
 
-                if (existingPlayer != null) {
-                  //Found a name, let's use it
-                  player.lfstats_id = existingPlayer.player_id;
-                  await client.query(sql`
+                  if (existingPlayer != null) {
+                    //Found a name, let's use it
+                    player.lfstats_id = existingPlayer.player_id;
+                    await client.query(sql`
                     UPDATE players 
                     SET ipl_id=${player.ipl_id} 
                     WHERE id=${player.lfstats_id}
                   `);
-                } else {
-                  //ITS A FNG
-                  let newPlayer = await client.query(sql`
+                  } else {
+                    //ITS A FNG
+                    let newPlayer = await client.query(sql`
                     INSERT INTO players (player_name,ipl_id) 
                     VALUES (${player.desc},${player.ipl_id})
                     RETURNING id
                   `);
 
-                  player.lfstats_id = newPlayer.rows[0].id;
-                  await client.query(sql`
+                    player.lfstats_id = newPlayer.rows[0].id;
+                    await client.query(sql`
                     INSERT INTO players_names (player_id,player_name,is_active) 
                     VALUES (${player.lfstats_id}, ${player.desc}, true)
                   `);
+                  }
                 }
               }
+              entities.set(key, player);
             }
-            entities.set(key, player);
-          }
-          //start working on game details pre-insert
-          //need to normalize team colors and determine elims before inserting the game
-          let redTeam;
-          let greenTeam;
-          for (const [key, value] of teams) {
-            if (value.normal_team == "red") redTeam = value;
-            if (value.normal_team == "green") greenTeam = value;
-          }
+            //start working on game details pre-insert
+            //need to normalize team colors and determine elims before inserting the game
+            let redTeam;
+            let greenTeam;
+            for (const [key, value] of teams) {
+              if (value.normal_team == "red") redTeam = value;
+              if (value.normal_team == "green") greenTeam = value;
+            }
 
-          //Assign elim bonuses
-          let greenBonus = 0,
-            redBonus = 0;
-          let redElim = 0,
-            greenElim = 0;
-          if (redTeam.livesLeft == 0) {
-            greenBonus = 10000;
-            redElim = 1;
-          }
-          if (greenTeam.livesLeft == 0) {
-            redBonus = 10000;
-            greenElim = 1;
-          }
+            //Assign elim bonuses
+            let greenBonus = 0,
+              redBonus = 0;
+            let redElim = 0,
+              greenElim = 0;
+            if (redTeam.livesLeft == 0) {
+              greenBonus = 10000;
+              redElim = 1;
+            }
+            if (greenTeam.livesLeft == 0) {
+              redBonus = 10000;
+              greenElim = 1;
+            }
 
-          //assign a winner
-          let winner = "";
-          //if both teams were elimed or neither were, we go to score
-          //otherwise, winner determined by elim regardless of score
-          if (redElim == greenElim) {
-            if (redTeam.score + redBonus > greenTeam.score + greenBonus)
-              winner = "red";
-            else winner = "green";
-          } else if (redElim) winner = "green";
-          else if (greenElim) winner = "red";
-          game.name = `Game @ ${moment(game.starttime).format("HH:mm:ss")}`;
+            //assign a winner
+            let winner = "";
+            //if both teams were elimed or neither were, we go to score
+            //otherwise, winner determined by elim regardless of score
+            if (redElim == greenElim) {
+              if (redTeam.score + redBonus > greenTeam.score + greenBonus)
+                winner = "red";
+              else winner = "green";
+            } else if (redElim) winner = "green";
+            else if (greenElim) winner = "red";
+            game.name = `Game @ ${moment(game.starttime).format("HH:mm:ss")}`;
 
-          let gameRecord = await client.query(sql`
+            let gameRecord = await client.query(sql`
             INSERT INTO games 
               (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id)
             VALUES
               (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
             RETURNING id
           `);
-          let newGame = gameRecord.rows[0];
+            let newGame = gameRecord.rows[0];
 
-          //insert the scorecards
-          for (const [key, player] of entities) {
-            if (player.type == "player") {
-              playerTeam = teams.get(player.team).normal_team;
+            //insert the scorecards
+            for (const [key, player] of entities) {
+              if (player.type == "player") {
+                playerTeam = teams.get(player.team).normal_team;
 
-              let team_elim = 0;
-              let elim_other_team = 0;
-              if (
-                (redElim && playerTeam == "red") ||
-                (greenElim && playerTeam == "green")
-              )
-                team_elim = 1;
-              if (
-                (redElim && playerTeam == "green") ||
-                (greenElim && playerTeam == "red")
-              )
-                elim_other_team = 1;
+                let team_elim = 0;
+                let elim_other_team = 0;
+                if (
+                  (redElim && playerTeam == "red") ||
+                  (greenElim && playerTeam == "green")
+                )
+                  team_elim = 1;
+                if (
+                  (redElim && playerTeam == "green") ||
+                  (greenElim && playerTeam == "red")
+                )
+                  elim_other_team = 1;
 
-              let scorecardRecord = await client.query(sql`
+                let scorecardRecord = await client.query(sql`
                 INSERT INTO scorecards
                   (
                     player_name,
@@ -536,75 +534,76 @@ exports.handler = async event => {
                   )
                   RETURNING id
               `);
+              }
             }
-          }
 
-          //fix penalties
-
-          //insert hit and missile stats
-
-          //insert the actions
-          for (let action of actions) {
-            await client.query(sql`
+            //insert the actions
+            for (let action of actions) {
+              await client.query(sql`
               INSERT INTO game_actions
                 (action_time, action_body, game_id) 
               VALUES
                 (${action.time}, ${JSON.stringify(action)}, ${newGame.id})
             `);
-          }
+            }
 
-          //insert the score deltas
-          for (const delta of score_deltas) {
-            //let player_id = entities.get(delta.player).lfstats_id;
+            //insert the score deltas
+            for (const delta of score_deltas) {
+              //let player_id = entities.get(delta.player).lfstats_id;
 
-            await client.query(sql`
+              await client.query(sql`
               INSERT INTO score_deltas
                 (score_time, old, delta, new, ipl_id, player_id, game_id) 
               VALUES
                 (${delta.time},${delta.old}, ${delta.delta}, ${delta.new}, ${delta.player}, null, ${newGame.id})
             `);
-          }
+            }
 
-          //Let's iterate through the entities and make some udpates in the database
-          //1-Tie an internal lfstats id to players and targets in each action
-          //2-Tie an internal lfstats id to each score delta
-          //3-insert the hit and missile stats for ech player
-          for (let [key, player] of entities) {
-            if (player.type == "player" && player.ipl_id.startsWith("#")) {
-              //1
-              let playerString = `{"player_id": ${player.lfstats_id}}`;
-              let targetString = `{"target_id": ${player.lfstats_id}}`;
-              await client.query(sql`
+            //Let's iterate through the entities and make some udpates in the database
+            //1-Tie an internal lfstats id to players and targets in each action
+            //2-Tie an internal lfstats id to each score delta
+            //3-insert the hit and missile stats for ech player
+            //4-fix penalties
+            for (let [key, player] of entities) {
+              if (player.type == "player" && player.ipl_id.startsWith("#")) {
+                //1
+                let playerString = `{"player_id": ${player.lfstats_id}}`;
+                let targetString = `{"target_id": ${player.lfstats_id}}`;
+                await client.query(sql`
                 UPDATE game_actions
                 SET action_body = action_body || ${playerString}
                 WHERE action_body->>'player' = ${player.ipl_id}
                   AND
                       game_id = ${newGame.id}
               `);
-              await client.query(sql`
+                await client.query(sql`
                 UPDATE game_actions
                 SET action_body = action_body || ${targetString}
                 WHERE action_body->>'target' = ${player.ipl_id}
                   AND
                       game_id = ${newGame.id}
               `);
-              //2
-              await client.query(sql`
+                //2
+                await client.query(sql`
                 UPDATE score_deltas
                 SET player_id = ${player.lfstats_id}
                 WHERE ipl_id = ${player.ipl_id}
                   AND
                       game_id = ${newGame.id}
               `);
-              //3
+                //3
+                //4
+              }
             }
           }
-        }
-      });
-    } catch (e) {
-      throw e;
-    }
-  });
+        });
+      } catch (e) {
+        throw e;
+      }
+    });
 
-  console.log("CHOMP COMPLETE");
+    console.log("CHOMP COMPLETE");
+  } catch (err) {
+    console.log("CHOMP ERROR", err.stack);
+  }
 };
