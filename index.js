@@ -604,6 +604,53 @@ exports.handler = async event => {
                 `);
                 }
                 //4-fix penalties
+                if (player.penalties > 0) {
+                  let penalties = await client.many(sql`
+                    SELECT *
+                    FROM score_deltas
+                    WHERE game_id = ${newGame.id}
+                      AND
+                        player_id = ${player.lfstats_id}
+                      AND
+                        delta = -1000
+                    ORDER BY score_time ASC
+                  `);
+
+                  for (const penalty of penalties) {
+                    //log the penalty - just going to use the common defaults
+                    await client.query(sql`
+                      INSERT INTO penalties
+                        (scorecard_id)
+                      VALUES
+                        (${player.scorecard_id})
+                    `);
+
+                    //Now the tricky bit, have to rebuild the score deltas from the point the penalty occurred
+                    //update the delta event to remove the -1000
+                    await client.query(sql`
+                      UPDATE score_deltas 
+                      SET delta=0,new=new+1000 
+                      WHERE id=${penalty.id}
+                    `);
+                    //Now update a lot of rows, so scary
+                    await client.query(sql`
+                      UPDATE score_deltas 
+                      SET old=old+1000,new=new+1000 
+                      WHERE game_id = ${newGame.id}
+                        AND
+                          player_id = ${player.lfstats_id}
+                        AND
+                          score_time>${penalty.score_time}
+                    `);
+                    //next, update the player's score
+                    await client.query(sql`
+                      UPDATE scorecards 
+                      SET score=score+1000
+                      WHERE id = ${player.scorecard_id}
+                    `);
+                    //last we gotta update the game score and potentially the winner
+                  }
+                }
                 //5-calculate MVP
               }
             }
