@@ -420,18 +420,18 @@ exports.handler = async event => {
             //insert the scorecards
             for (const [key, player] of entities) {
               if (player.type == "player") {
-                playerTeam = teams.get(player.team).normal_team;
+                player.normal_team = teams.get(player.team).normal_team;
 
                 let team_elim = 0;
                 let elim_other_team = 0;
                 if (
-                  (redElim && playerTeam == "red") ||
-                  (greenElim && playerTeam == "green")
+                  (redElim && player.normal_team == "red") ||
+                  (greenElim && player.normal_team == "green")
                 )
                   team_elim = 1;
                 if (
-                  (redElim && playerTeam == "green") ||
-                  (greenElim && playerTeam == "red")
+                  (redElim && player.normal_team == "green") ||
+                  (greenElim && player.normal_team == "red")
                 )
                   elim_other_team = 1;
 
@@ -488,7 +488,7 @@ exports.handler = async event => {
                   (
                     ${player.desc},
                     ${game.starttime},
-                    ${playerTeam},
+                    ${player.normal_team},
                     ${player.position},
                     ${player.survived},
                     ${player.shotsHit},
@@ -534,17 +534,18 @@ exports.handler = async event => {
                   )
                   RETURNING id
               `);
+                player.scorecard_id = scorecardRecord.rows[0].id;
               }
             }
 
             //insert the actions
             for (let action of actions) {
               await client.query(sql`
-              INSERT INTO game_actions
-                (action_time, action_body, game_id) 
-              VALUES
-                (${action.time}, ${JSON.stringify(action)}, ${newGame.id})
-            `);
+                INSERT INTO game_actions
+                  (action_time, action_body, game_id) 
+                VALUES
+                  (${action.time}, ${JSON.stringify(action)}, ${newGame.id})
+              `);
             }
 
             //insert the score deltas
@@ -552,47 +553,58 @@ exports.handler = async event => {
               //let player_id = entities.get(delta.player).lfstats_id;
 
               await client.query(sql`
-              INSERT INTO score_deltas
-                (score_time, old, delta, new, ipl_id, player_id, game_id) 
-              VALUES
-                (${delta.time},${delta.old}, ${delta.delta}, ${delta.new}, ${delta.player}, null, ${newGame.id})
-            `);
+                INSERT INTO score_deltas
+                  (score_time, old, delta, new, ipl_id, player_id, game_id) 
+                VALUES
+                  (${delta.time},${delta.old}, ${delta.delta}, ${delta.new}, ${delta.player}, null, ${newGame.id})
+              `);
             }
 
             //Let's iterate through the entities and make some udpates in the database
-            //1-Tie an internal lfstats id to players and targets in each action
-            //2-Tie an internal lfstats id to each score delta
-            //3-insert the hit and missile stats for ech player
-            //4-fix penalties
+
             for (let [key, player] of entities) {
               if (player.type == "player" && player.ipl_id.startsWith("#")) {
-                //1
+                //1-Tie an internal lfstats id to players and targets in each action
                 let playerString = `{"player_id": ${player.lfstats_id}}`;
                 let targetString = `{"target_id": ${player.lfstats_id}}`;
                 await client.query(sql`
-                UPDATE game_actions
-                SET action_body = action_body || ${playerString}
-                WHERE action_body->>'player' = ${player.ipl_id}
-                  AND
-                      game_id = ${newGame.id}
-              `);
+                  UPDATE game_actions
+                  SET action_body = action_body || ${playerString}
+                  WHERE action_body->>'player' = ${player.ipl_id}
+                    AND
+                        game_id = ${newGame.id}
+                `);
                 await client.query(sql`
-                UPDATE game_actions
-                SET action_body = action_body || ${targetString}
-                WHERE action_body->>'target' = ${player.ipl_id}
-                  AND
-                      game_id = ${newGame.id}
-              `);
-                //2
+                  UPDATE game_actions
+                  SET action_body = action_body || ${targetString}
+                  WHERE action_body->>'target' = ${player.ipl_id}
+                    AND
+                        game_id = ${newGame.id}
+                `);
+                //2-Tie an internal lfstats id to each score delta
                 await client.query(sql`
-                UPDATE score_deltas
-                SET player_id = ${player.lfstats_id}
-                WHERE ipl_id = ${player.ipl_id}
-                  AND
-                      game_id = ${newGame.id}
-              `);
-                //3
-                //4
+                  UPDATE score_deltas
+                  SET player_id = ${player.lfstats_id}
+                  WHERE ipl_id = ${player.ipl_id}
+                    AND
+                        game_id = ${newGame.id}
+                `);
+                //3-insert the hit and missile stats for each player
+                for (let [key, target] of player.hits) {
+                  if (entities.has(target.ipl_id)) {
+                    target.target_lfstats_id = entities.get(
+                      target.ipl_id
+                    ).lfstats_id;
+                  }
+                  await client.query(sql`
+                  INSERT INTO hits
+                    (player_id, target_id, hits, missiles, scorecard_id)
+                  VALUES
+                    (${player.lfstats_id}, ${target.target_lfstats_id}, ${target.hits}, ${target.missiles}, ${player.scorecard_id})
+                `);
+                }
+                //4-fix penalties
+                //5-calculate MVP
               }
             }
           }
