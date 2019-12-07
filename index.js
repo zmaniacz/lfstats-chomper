@@ -231,6 +231,10 @@ exports.handler = async event => {
             missiledTeam: parseInt(record[24]),
             ...player
           };
+          //adjsut for penalties
+          if (player.penalties > 0) {
+            player.score += record[18] * 1000;
+          }
           entities.set(record[1], player);
           teams.get(player.team).livesLeft += player.livesLeft;
           teams.get(player.team).score += player.score;
@@ -279,10 +283,10 @@ exports.handler = async event => {
 
           if (gameExist == null) {
             let center = await client.one(sql`
-            SELECT *
-            FROM centers 
-            WHERE ipl_id=${game.center}
-          `);
+              SELECT *
+              FROM centers 
+              WHERE ipl_id=${game.center}
+            `);
 
             //find or create lfstats player IDs
             for (let [key, player] of entities) {
@@ -295,27 +299,27 @@ exports.handler = async event => {
               ) {
                 //member!
                 let playerRecord = await client.maybeOne(sql`
-                SELECT *
-                FROM players
-                WHERE ipl_id=${player.ipl_id}
-              `);
+                  SELECT *
+                  FROM players
+                  WHERE ipl_id=${player.ipl_id}
+                `);
 
                 if (playerRecord != null) {
                   //IPL exists, let's save the lfstats id
                   player.lfstats_id = playerRecord.id;
                   //set all aliases inactive
                   await client.query(sql`
-                  UPDATE players_names 
-                  SET is_active=false 
-                  WHERE player_id=${player.lfstats_id}
-                `);
+                    UPDATE players_names 
+                    SET is_active=false 
+                    WHERE player_id=${player.lfstats_id}
+                  `);
 
                   //Is the player using a new alias?
                   let playerNames = await client.maybeOne(sql`
-                  SELECT * 
-                  FROM players_names 
-                  WHERE players_names.player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
-                `);
+                    SELECT * 
+                    FROM players_names 
+                    WHERE players_names.player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
+                  `);
 
                   if (playerNames == null) {
                     //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
@@ -334,10 +338,10 @@ exports.handler = async event => {
                   }
                   //update the player record with the new active alias
                   await client.query(sql`
-                  UPDATE players 
-                  SET player_name=${player.desc} 
-                  WHERE id=${player.lfstats_id}
-                `);
+                    UPDATE players 
+                    SET player_name=${player.desc} 
+                    WHERE id=${player.lfstats_id}
+                  `);
                 } else {
                   //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
                   //otherwise create a BRAND NEW player
@@ -358,21 +362,20 @@ exports.handler = async event => {
                   } else {
                     //ITS A FNG
                     let newPlayer = await client.query(sql`
-                    INSERT INTO players (player_name,ipl_id) 
-                    VALUES (${player.desc},${player.ipl_id})
-                    RETURNING id
-                  `);
-
+                      INSERT INTO players (player_name,ipl_id) 
+                      VALUES (${player.desc},${player.ipl_id})
+                      RETURNING *
+                    `);
                     player.lfstats_id = newPlayer.rows[0].id;
                     await client.query(sql`
-                    INSERT INTO players_names (player_id,player_name,is_active) 
-                    VALUES (${player.lfstats_id}, ${player.desc}, true)
-                  `);
+                      INSERT INTO players_names (player_id,player_name,is_active) 
+                      VALUES (${player.lfstats_id}, ${player.desc}, true)
+                    `);
                   }
                 }
               }
-              entities.set(key, player);
             }
+
             //start working on game details pre-insert
             //need to normalize team colors and determine elims before inserting the game
             let redTeam;
@@ -406,16 +409,36 @@ exports.handler = async event => {
               else winner = "green";
             } else if (redElim) winner = "green";
             else if (greenElim) winner = "red";
-            game.name = `Game @ ${moment(game.starttime).format("HH:mm:ss")}`;
+            game.name = `Game @ ${moment(game.starttime).format("HH:mm")}`;
 
             let gameRecord = await client.query(sql`
             INSERT INTO games 
-              (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id)
-            VALUES
-              (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
-            RETURNING id
-          `);
+                (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id)
+              VALUES
+                (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
+              RETURNING *
+            `);
             let newGame = gameRecord.rows[0];
+
+            //insert the actions
+            for (let action of actions) {
+              await client.query(sql`
+                INSERT INTO game_actions
+                  (action_time, action_body, game_id) 
+                VALUES
+                  (${action.time}, ${JSON.stringify(action)}, ${newGame.id})
+              `);
+            }
+
+            //insert the score deltas
+            for (const delta of score_deltas) {
+              await client.query(sql`
+                INSERT INTO score_deltas
+                  (score_time, old, delta, new, ipl_id, player_id, game_id) 
+                VALUES
+                  (${delta.time},${delta.old}, ${delta.delta}, ${delta.new}, ${delta.player}, null, ${newGame.id})
+              `);
+            }
 
             //insert the scorecards
             for (const [key, player] of entities) {
@@ -436,134 +459,111 @@ exports.handler = async event => {
                   elim_other_team = 1;
 
                 let scorecardRecord = await client.query(sql`
-                INSERT INTO scorecards
-                  (
-                    player_name,
-                    game_datetime,
-                    team,
-                    position,
-                    survived,
-                    shots_hit,
-                    shots_fired,
-                    times_zapped,
-                    times_missiled,
-                    missile_hits,
-                    nukes_activated,
-                    nukes_detonated,
-                    nukes_canceled,
-                    medic_hits,
-                    own_medic_hits,
-                    medic_nukes,
-                    scout_rapid,
-                    life_boost,
-                    ammo_boost,
-                    lives_left,
-                    score,
-                    max_score,
-                    shots_left,
-                    penalties,
-                    shot_3hit,
-                    elim_other_team,
-                    team_elim,
-                    own_nuke_cancels,
-                    shot_opponent,
-                    shot_team,
-                    missiled_opponent,
-                    missiled_team,
-                    resupplies,
-                    rank,
-                    bases_destroyed,
-                    accuracy,
-                    hit_diff,
-                    mvp_points,
-                    mvp_details,
-                    sp_earned,
-                    sp_spent,
-                    game_id,
-                    type,
-                    player_id,
-                    center_id
-                  )
-                VALUES
-                  (
-                    ${player.desc},
-                    ${game.starttime},
-                    ${player.normal_team},
-                    ${player.position},
-                    ${player.survived},
-                    ${player.shotsHit},
-                    ${player.shotsFired},
-                    ${player.timesZapped},
-                    ${player.timesMissiled},
-                    ${player.missileHits},
-                    ${player.nukesActivated},
-                    ${player.nukesDetonated},
-                    ${player.nukeCancels},
-                    ${player.medicHits},
-                    ${player.ownMedicHits},
-                    ${player.medicNukes},
-                    ${player.scoutRapid},
-                    ${player.lifeBoost},
-                    ${player.ammoBoost},
-                    ${player.livesLeft},
-                    ${player.score},
-                    0,
-                    ${player.shotsLeft},
-                    ${player.penalties},
-                    ${player.shot3Hit},
-                    ${elim_other_team},
-                    ${team_elim},
-                    ${player.ownNukeCancels},
-                    ${player.shotOpponent},
-                    ${player.shotTeam},
-                    ${player.missiledOpponent},
-                    ${player.missiledTeam},
-                    ${player.resupplies},
-                    0,
-                    ${player.bases_destroyed},
-                    ${player.accuracy},
-                    ${player.hit_diff},
-                    0,
-                    ${null},
-                    ${player.sp_earned},
-                    ${player.sp_spent},
-                    ${newGame.id},
-                    'social',
-                    ${player.lfstats_id},
-                    ${center.id}
-                  )
-                  RETURNING id
-              `);
+                  INSERT INTO scorecards
+                    (
+                      player_name,
+                      game_datetime,
+                      team,
+                      position,
+                      survived,
+                      shots_hit,
+                      shots_fired,
+                      times_zapped,
+                      times_missiled,
+                      missile_hits,
+                      nukes_activated,
+                      nukes_detonated,
+                      nukes_canceled,
+                      medic_hits,
+                      own_medic_hits,
+                      medic_nukes,
+                      scout_rapid,
+                      life_boost,
+                      ammo_boost,
+                      lives_left,
+                      score,
+                      max_score,
+                      shots_left,
+                      penalties,
+                      shot_3hit,
+                      elim_other_team,
+                      team_elim,
+                      own_nuke_cancels,
+                      shot_opponent,
+                      shot_team,
+                      missiled_opponent,
+                      missiled_team,
+                      resupplies,
+                      rank,
+                      bases_destroyed,
+                      accuracy,
+                      hit_diff,
+                      mvp_points,
+                      mvp_details,
+                      sp_earned,
+                      sp_spent,
+                      game_id,
+                      type,
+                      player_id,
+                      center_id
+                    )
+                  VALUES
+                    (
+                      ${player.desc},
+                      ${game.starttime},
+                      ${player.normal_team},
+                      ${player.position},
+                      ${player.survived},
+                      ${player.shotsHit},
+                      ${player.shotsFired},
+                      ${player.timesZapped},
+                      ${player.timesMissiled},
+                      ${player.missileHits},
+                      ${player.nukesActivated},
+                      ${player.nukesDetonated},
+                      ${player.nukeCancels},
+                      ${player.medicHits},
+                      ${player.ownMedicHits},
+                      ${player.medicNukes},
+                      ${player.scoutRapid},
+                      ${player.lifeBoost},
+                      ${player.ammoBoost},
+                      ${player.livesLeft},
+                      ${player.score},
+                      0,
+                      ${player.shotsLeft},
+                      ${player.penalties},
+                      ${player.shot3Hit},
+                      ${elim_other_team},
+                      ${team_elim},
+                      ${player.ownNukeCancels},
+                      ${player.shotOpponent},
+                      ${player.shotTeam},
+                      ${player.missiledOpponent},
+                      ${player.missiledTeam},
+                      ${player.resupplies},
+                      0,
+                      ${player.bases_destroyed},
+                      ${player.accuracy},
+                      ${player.hit_diff},
+                      0,
+                      ${null},
+                      ${player.sp_earned},
+                      ${player.sp_spent},
+                      ${newGame.id},
+                      'social',
+                      ${player.lfstats_id},
+                      ${center.id}
+                    )
+                    RETURNING *
+                `);
                 player.scorecard_id = scorecardRecord.rows[0].id;
               }
             }
 
-            //insert the actions
-            for (let action of actions) {
-              await client.query(sql`
-                INSERT INTO game_actions
-                  (action_time, action_body, game_id) 
-                VALUES
-                  (${action.time}, ${JSON.stringify(action)}, ${newGame.id})
-              `);
-            }
-
-            //insert the score deltas
-            for (const delta of score_deltas) {
-              //let player_id = entities.get(delta.player).lfstats_id;
-
-              await client.query(sql`
-                INSERT INTO score_deltas
-                  (score_time, old, delta, new, ipl_id, player_id, game_id) 
-                VALUES
-                  (${delta.time},${delta.old}, ${delta.delta}, ${delta.new}, ${delta.player}, null, ${newGame.id})
-              `);
-            }
-
             //Let's iterate through the entities and make some udpates in the database
-
             for (let [key, player] of entities) {
-              if (player.type == "player" && player.ipl_id.startsWith("#")) {
+              if (player.type == "player") {
                 //1-Tie an internal lfstats id to players and targets in each action
                 let playerString = `{"player_id": ${player.lfstats_id}}`;
                 let targetString = `{"target_id": ${player.lfstats_id}}`;
@@ -642,18 +642,11 @@ exports.handler = async event => {
                         AND
                           score_time>${penalty.score_time}
                     `);
-                    //next, update the player's score
-                    await client.query(sql`
-                      UPDATE scorecards 
-                      SET score=score+1000
-                      WHERE id = ${player.scorecard_id}
-                    `);
-                    //last we gotta update the game score and potentially the winner
                   }
                 }
-                //5-calculate MVP
               }
             }
+            //calc mvp
           }
         });
       } catch (e) {
