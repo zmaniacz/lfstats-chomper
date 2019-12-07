@@ -646,7 +646,240 @@ exports.handler = async event => {
                 }
               }
             }
-            //calc mvp
+            //calc mvp - lets fuckin go bro, the good shit aw yiss
+            let scorecards = await client.many(sql`
+              SELECT *
+              FROM scorecards
+              WHERE game_id = ${newGame.id}
+            `);
+
+            for (const scorecard of scorecards) {
+              //instantiate the fuckin mvp object bro
+              let mvp = 0;
+              let mvpDetails = {
+                positionBonus: {
+                  name: "Position Score Bonus",
+                  value: 0
+                },
+                missiledOpponent: {
+                  name: "Missiled Opponent",
+                  value: 0
+                },
+                acc: {
+                  name: "Accuracy",
+                  value: 0
+                },
+                nukesDetonated: {
+                  name: "Nukes Detonated",
+                  value: 0
+                },
+                nukesCanceled: {
+                  name: "Nukes Canceled",
+                  value: 0
+                },
+                medicHits: {
+                  name: "Medic Hits",
+                  value: 0
+                },
+                ownMedicHits: {
+                  name: "Own Medic Hits",
+                  value: 0
+                },
+                rapidFire: {
+                  name: "Activate Rapid Fire",
+                  value: 0
+                },
+                shoot3Hit: {
+                  name: "Shoot 3-Hit",
+                  value: 0
+                },
+                ammoBoost: {
+                  name: "Ammo Boost",
+                  value: 0
+                },
+                lifeBoost: {
+                  name: "Life Boost",
+                  value: 0
+                },
+                medicSurviveBonus: {
+                  name: "Medic Survival Bonus",
+                  value: 0
+                },
+                medicScoreBonus: {
+                  name: "Medic Score Bonus",
+                  value: 0
+                },
+                elimBonus: {
+                  name: "Elimination Bonus",
+                  value: 0
+                },
+                timesMissiled: {
+                  name: "Times Missiled",
+                  value: 0
+                },
+                missiledTeam: {
+                  name: "Missiled Team",
+                  value: 0
+                },
+                ownNukesCanceled: {
+                  name: "Your Nukes Canceled",
+                  value: 0
+                },
+                teamNukesCanceled: {
+                  name: "Team Nukes Canceled",
+                  value: 0
+                },
+                elimPenalty: {
+                  name: "Elimination Penalty",
+                  value: 0
+                },
+                penalties: {
+                  name: "Penalties",
+                  value: 0
+                }
+              };
+
+              //POSITION BASED SCORE BONUS OMFG GIT GUD
+              switch (scorecard.position) {
+                case "Ammo Carrier":
+                  mvpDetails.positionBonus.value += Math.max(
+                    Math.floor((scorecard.score - 3000) / 10) * 0.01,
+                    0
+                  );
+                  break;
+                case "Commander":
+                  mvpDetails.positionBonus.value += Math.max(
+                    Math.floor((scorecard.score - 10000) / 10) * 0.01,
+                    0
+                  );
+                  break;
+                case "Heavy Weapons":
+                  mvpDetails.positionBonus.value += Math.max(
+                    Math.floor((scorecard.score - 7000) / 10) * 0.01,
+                    0
+                  );
+                  break;
+                case "Medic":
+                  mvpDetails.positionBonus.value += Math.max(
+                    Math.floor((scorecard.score - 2000) / 10) * 0.01,
+                    0
+                  );
+                  break;
+                case "Scout":
+                  mvpDetails.positionBonus.value += Math.max(
+                    Math.floor((scorecard.score - 6000) / 10) * 0.01,
+                    0
+                  );
+                  break;
+              }
+
+              //medic bonus score point
+              if ("Medic" == scorecard.position && scorecard.score >= 3000) {
+                mvpDetails.medicScoreBonus.value += 1;
+              }
+
+              //accuracy bonus
+              mvpDetails.acc.value += Math.round(scorecard.accuracy * 100) / 10;
+
+              //don't get missiled dummy
+              mvpDetails.timesMissiled.value += scorecard.times_missiled * -1;
+
+              //missile other people instead
+              switch (scorecard.position) {
+                case "Commander":
+                  mvpDetails.missiledOpponent.value +=
+                    scorecard.missiled_opponent;
+                  break;
+                case "Heavy Weapons":
+                  mvpDetails.missiledOpponent.value +=
+                    scorecard.missiled_opponent * 2;
+                  break;
+              }
+
+              //get dat 5-chain
+              mvpDetails.nukesDetonated.value += scorecard.nukes_detonated;
+
+              //maybe hide better
+              if (scorecard.nukes_activated - scorecard.nukes_detonated > 0) {
+                let team = "red" == scorecard.team ? "green" : "red";
+
+                let nukes = await client.any(sql`
+                  SELECT SUM(nukes_canceled) as all_nukes_canceled
+                  FROM scorecards
+                  WHERE game_id = ${newGame.id} AND team = ${team}
+                `);
+
+                if (nukes.rows[0].all_nukes_canceled > 0) {
+                  mvpDetails.ownNukesCanceled.value +=
+                    nukes.rows[0].all_nukes_canceled * -3;
+                }
+              }
+
+              //make commanders cry
+              mvpDetails.nukesCanceled.value += scorecard.nukes_canceled * 3;
+
+              //medic tears are scrumptious
+              mvpDetails.medicHits.value += scorecard.medic_hits;
+
+              //dont be a venom
+              mvpDetails.ownMedicHits.value += scorecard.own_medic_hits * -1;
+
+              //push the little button
+              mvpDetails.rapidFire.value += scorecard.scout_rapid * 0.5;
+              mvpDetails.lifeBoost.value += scorecard.life_boost * 2;
+              mvpDetails.ammoBoost.value += scorecard.ammo_boost * 3;
+
+              //survival bonuses/penalties
+              if (scorecard.lives_left > 0 && "Medic" == scorecard.position) {
+                mvpDetails.medicSurviveBonus.value += 2;
+              }
+
+              if (scorecard.lives_left <= 0 && "Medic" != scorecard.position) {
+                mvpDetails.elimPenalty.value += -1;
+              }
+
+              //apply penalties based on value of the penalty
+              let playerPenalties = await client.any(sql`
+                SELECT *
+                FROM penalties
+                WHERE scorecard_id = ${scorecard.id}
+              `);
+              for (let penalty of playerPenalties) {
+                if ("Penalty Removed" != penalty.type) {
+                  mvpDetails.penalties.value += penalty.mvp_value;
+                }
+              }
+
+              //raping 3hits.  the math looks weird, but it works and gets the desired result
+              mvpDetails.shoot3Hit.value +=
+                Math.floor((scorecard.shot_3hit / 6) * 100) / 100;
+
+              //One time DK, one fucking time.
+              mvpDetails.teamNukesCanceled.value +=
+                scorecard.own_nuke_cancels * -3;
+
+              //more venom points
+              mvpDetails.missiledTeam.value += scorecard.missiled_team * -3;
+
+              //WINNER
+              //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
+              if (scorecard.elim_other_team > 0)
+                mvpDetails.elimBonus.value += Math.max(
+                  1,
+                  (900 - scorecard.game_length) / 60
+                );
+
+              //sum it up and insert
+              for (const prop in mvpDetails) {
+                mvp += mvpDetails[prop].value;
+              }
+
+              await client.query(sql`
+                UPDATE scorecards
+                SET mvp_points=${mvp}, mvp_details=${JSON.stringify(mvpDetails)}
+                WHERE id = ${scorecard.id}
+              `);
+            }
           }
         });
       } catch (e) {
