@@ -123,10 +123,18 @@ exports.handler = async event => {
           let action = {
             time: record[1],
             type: record[2],
-            player: record[3]
+            player: null,
+            action: null,
+            target: null
           };
-          if (typeof record[4] != "undefined") action.action = record[4];
-          if (typeof record[5] != "undefined") action.target = record[5];
+
+          if (record[2] == "0100" || record[2] == "0101") {
+            action.action = record[3];
+          } else {
+            action.player = record[3];
+            action.action = record[4];
+            action.target = typeof record[5] != "undefined" ? record[5] : null;
+          }
 
           actions.push(action);
 
@@ -424,9 +432,9 @@ exports.handler = async event => {
             for (let action of actions) {
               await client.query(sql`
                 INSERT INTO game_actions
-                  (action_time, action_body, game_id) 
+                  (action_time, action_type, action_text, player, target, game_id) 
                 VALUES
-                  (${action.time}, ${JSON.stringify(action)}, ${newGame.id})
+                  (${action.time}, ${action.type}, ${action.action}, ${action.player}, ${action.target}, ${newGame.id})
               `);
             }
 
@@ -565,19 +573,17 @@ exports.handler = async event => {
             for (let [key, player] of entities) {
               if (player.type == "player") {
                 //1-Tie an internal lfstats id to players and targets in each action
-                let playerString = `{"player_id": ${player.lfstats_id}}`;
-                let targetString = `{"target_id": ${player.lfstats_id}}`;
                 await client.query(sql`
                   UPDATE game_actions
-                  SET action_body = action_body || ${playerString}
-                  WHERE action_body->>'player' = ${player.ipl_id}
+                  SET player_id = ${player.lfstats_id}
+                  WHERE player = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
                 `);
                 await client.query(sql`
                   UPDATE game_actions
-                  SET action_body = action_body || ${targetString}
-                  WHERE action_body->>'target' = ${player.ipl_id}
+                  SET target_id = ${player.lfstats_id}
+                  WHERE target = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
                 `);
