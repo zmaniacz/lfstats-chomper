@@ -815,9 +815,9 @@ exports.handler = async event => {
                   WHERE game_id = ${newGame.id} AND team = ${team}
                 `);
 
-                if (nukes.rows[0].all_nukes_canceled > 0) {
+                if (nukes.all_nukes_canceled > 0) {
                   mvpDetails.ownNukesCanceled.value +=
-                    nukes.rows[0].all_nukes_canceled * -3;
+                    nukes.all_nukes_canceled * -3;
                 }
               }
 
