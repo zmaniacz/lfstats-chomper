@@ -872,7 +872,7 @@ exports.handler = async event => {
               if (scorecard.elim_other_team > 0)
                 mvpDetails.elimBonus.value += Math.max(
                   1,
-                  (900 - scorecard.game_length) / 60
+                  (900 - newGame.game_length) / 60
                 );
 
               //sum it up and insert
