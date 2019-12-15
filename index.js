@@ -301,6 +301,7 @@ exports.handler = async event => {
                 .filter(
                   p => p[1].type === "player" && p[1].ipl_id.startsWith("#")
                 )
+                .sort()
                 .map(p => sql.join([p[1].desc, p[1].ipl_id], sql`, `)),
               sql`), (`
             )}
@@ -333,6 +334,7 @@ exports.handler = async event => {
                 .filter(
                   p => p[1].type === "player" && p[1].ipl_id.startsWith("#")
                 )
+                .sort()
                 .map(p =>
                   sql.join([p[1].lfstats_id, p[1].desc, true], sql`, `)
                 ),
