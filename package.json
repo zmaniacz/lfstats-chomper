@@ -1,0 +1,22 @@
+{
+  "name": "lfstats-chomper",
+  "version": "1.0.0",
+  "description": "AWS Lambda function to process SM5 tdf scorecards",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zmaniacz/lfstats-chomper.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zmaniacz/lfstats-chomper/issues"
+  },
+  "homepage": "https://github.com/zmaniacz/lfstats-chomper#readme",
+  "devDependencies": {
+    "eslint": "^6.7.2"
+  }
+}
