@@ -48,11 +48,10 @@ exports.handler = async event => {
   var entities = new Map();
   var teams = new Map();
   var game = {};
-  var metadata = {};
   var actions = [];
   var score_deltas = [];
 
-  let chompFile = new Promise((resolve, reject) => {
+  let chompFile = new Promise(resolve => {
     rl.on("line", line => {
       let record = line.split("\t");
       if (record[0].includes(';"')) {
@@ -60,10 +59,6 @@ exports.handler = async event => {
       } else {
         if (record[0] == 0) {
           //;0/version	file-version	program-version
-          metadata = {
-            file_version: record[1],
-            program_version: record[2]
-          };
           game = {
             center: record[3]
           };
@@ -279,194 +274,198 @@ exports.handler = async event => {
     //TODO
     //log gens and targets somehow in the actions
     await pool.connect(async connection => {
-      try {
-        await connection.transaction(async client => {
-          //Let's see if the game already exists before we start doing too much
-          let gameExist = await client.maybeOne(
-            sql`SELECT games.id 
-              FROM games 
-              INNER JOIN centers ON games.center_id=centers.id 
-              WHERE game_datetime=${game.starttime} AND centers.ipl_id=${game.center}`
-          );
+      //Let's see if the game already exists before we start doing too much
+      let gameExist = await connection.maybeOne(
+        sql`SELECT games.id 
+            FROM games 
+            INNER JOIN centers ON games.center_id=centers.id 
+            WHERE game_datetime=${game.starttime} AND centers.ipl_id=${game.center}`
+      );
 
-          if (gameExist == null) {
-            let center = await client.one(sql`
-              SELECT *
-              FROM centers 
-              WHERE ipl_id=${game.center}
-            `);
+      if (gameExist != null) return;
 
-            //find or create lfstats player IDs
-            for (let [key, player] of entities) {
-              if (player.type == "player" && player.ipl_id.startsWith("@")) {
-                //not a member, so assign the generic player id
-                player.lfstats_id = 0;
-              } else if (
-                player.type == "player" &&
-                player.ipl_id.startsWith("#")
-              ) {
-                //member!
-                let playerRecord = await client.maybeOne(sql`
-                  SELECT *
-                  FROM players
-                  WHERE ipl_id=${player.ipl_id}
-                `);
+      let center = await connection.one(sql`
+        SELECT *
+        FROM centers 
+        WHERE ipl_id=${game.center}
+      `);
 
-                if (playerRecord != null) {
-                  //IPL exists, let's save the lfstats id
-                  player.lfstats_id = playerRecord.id;
-                  //set all aliases inactive
-                  await client.query(sql`
-                    UPDATE players_names 
-                    SET is_active=false 
-                    WHERE player_id=${player.lfstats_id}
-                  `);
-
-                  //Is the player using a new alias?
-                  let playerNames = await client.maybeOne(sql`
-                    SELECT * 
-                    FROM players_names 
-                    WHERE players_names.player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
-                  `);
-
-                  if (playerNames == null) {
-                    //this is a new alias! why do people do this. i've used one name since 1997. commit, people.
-                    //insert the new alias and make it active
-                    await client.query(sql`
-                    INSERT INTO players_names (player_id,player_name,is_active) 
-                    VALUES (${player.lfstats_id}, ${player.desc}, true)
-                  `);
-                  } else {
-                    //existing alias, make it active
-                    await client.query(sql`
-                    UPDATE players_names 
-                    SET is_active=true 
-                    WHERE player_id=${player.lfstats_id} AND players_names.player_name=${player.desc}
-                  `);
-                  }
-                  //update the player record with the new active alias
-                  await client.query(sql`
-                    UPDATE players 
-                    SET player_name=${player.desc} 
-                    WHERE id=${player.lfstats_id}
-                  `);
-                } else {
-                  //IPL doesn't exist, so let's see if this player name already exists and tie the IPL to an existing record
-                  //otherwise create a BRAND NEW player
-                  let existingPlayer = await client.maybeOne(sql`
-                  SELECT * 
-                  FROM players_names 
-                  WHERE player_name=${player.desc}
-                `);
-
-                  if (existingPlayer != null) {
-                    //Found a name, let's use it
-                    player.lfstats_id = existingPlayer.player_id;
-                    await client.query(sql`
-                    UPDATE players 
-                    SET ipl_id=${player.ipl_id} 
-                    WHERE id=${player.lfstats_id}
-                  `);
-                  } else {
-                    //ITS A FNG
-                    let newPlayer = await client.query(sql`
-                      INSERT INTO players (player_name,ipl_id) 
-                      VALUES (${player.desc},${player.ipl_id})
-                      RETURNING *
-                    `);
-                    player.lfstats_id = newPlayer.rows[0].id;
-                    await client.query(sql`
-                      INSERT INTO players_names (player_id,player_name,is_active) 
-                      VALUES (${player.lfstats_id}, ${player.desc}, true)
-                    `);
-                  }
-                }
-              }
-            }
-
-            //start working on game details pre-insert
-            //need to normalize team colors and determine elims before inserting the game
-            let redTeam;
-            let greenTeam;
-            for (const [key, value] of teams) {
-              if (value.normal_team == "red") redTeam = value;
-              if (value.normal_team == "green") greenTeam = value;
-            }
-
-            //Assign elim bonuses
-            let greenBonus = 0,
-              redBonus = 0;
-            let redElim = 0,
-              greenElim = 0;
-            if (redTeam.livesLeft == 0) {
-              greenBonus = 10000;
-              redElim = 1;
-            }
-            if (greenTeam.livesLeft == 0) {
-              redBonus = 10000;
-              greenElim = 1;
-            }
-
-            //assign a winner
-            let winner = "";
-            //if both teams were elimed or neither were, we go to score
-            //otherwise, winner determined by elim regardless of score
-            if (redElim == greenElim) {
-              if (redTeam.score + redBonus > greenTeam.score + greenBonus)
-                winner = "red";
-              else winner = "green";
-            } else if (redElim) winner = "green";
-            else if (greenElim) winner = "red";
-            game.name = `Game @ ${moment(game.starttime).format("HH:mm")}`;
-
-            let gameRecord = await client.query(sql`
-            INSERT INTO games 
-                (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id)
-              VALUES
-                (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
-              RETURNING *
-            `);
-            let newGame = gameRecord.rows[0];
-
-            //insert the actions
-            for (let action of actions) {
-              await client.query(sql`
-                INSERT INTO game_actions
-                  (action_time, action_type, action_text, player, target, game_id) 
-                VALUES
-                  (${action.time}, ${action.type}, ${action.action}, ${action.player}, ${action.target}, ${newGame.id})
-              `);
-            }
-
-            //insert the score deltas
-            for (const delta of score_deltas) {
-              await client.query(sql`
-                INSERT INTO score_deltas
-                  (score_time, old, delta, new, ipl_id, player_id, game_id) 
-                VALUES
-                  (${delta.time},${delta.old}, ${delta.delta}, ${delta.new}, ${delta.player}, null, ${newGame.id})
-              `);
-            }
-
-            //insert the scorecards
-            for (const [key, player] of entities) {
-              if (player.type == "player") {
-                player.normal_team = teams.get(player.team).normal_team;
-
-                let team_elim = 0;
-                let elim_other_team = 0;
-                if (
-                  (redElim && player.normal_team == "red") ||
-                  (greenElim && player.normal_team == "green")
+      let playerRecords = await connection.transaction(async client => {
+        //find or create lfstats player IDs
+        //baller screaver optimization
+        return await client.query(sql`
+          INSERT INTO players (player_name,ipl_id) 
+          VALUES (
+            ${sql.join(
+              [...entities]
+                .filter(
+                  p => p[1].type === "player" && p[1].ipl_id.startsWith("#")
                 )
-                  team_elim = 1;
-                if (
-                  (redElim && player.normal_team == "green") ||
-                  (greenElim && player.normal_team == "red")
-                )
-                  elim_other_team = 1;
+                .map(p => sql.join([p[1].desc, p[1].ipl_id], sql`, `)),
+              sql`), (`
+            )}
+          )
+          ON CONFLICT (ipl_id) DO UPDATE SET player_name=excluded.player_name
+          RETURNING *
+        `);
+      });
 
-                let scorecardRecord = await client.query(sql`
+      //assign out the lfstats IDs to our entities object so we can use them later
+      for (let [, player] of entities) {
+        if (player.type == "player" && player.ipl_id.startsWith("@"))
+          //not a member, so assign the generic player id
+          player.lfstats_id = 0;
+      }
+
+      //update the rest of our entities with their lfstats IDs
+      for (let player of playerRecords.rows) {
+        entities.get(player.ipl_id).lfstats_id = player.id;
+      }
+
+      //upsert aliases
+      await connection.transaction(async client => {
+        return await client.query(sql`
+          INSERT INTO players_names (player_id,player_name,is_active) 
+          VALUES 
+          (
+            ${sql.join(
+              [...entities]
+                .filter(
+                  p => p[1].type === "player" && p[1].ipl_id.startsWith("#")
+                )
+                .map(p =>
+                  sql.join([p[1].lfstats_id, p[1].desc, true], sql`, `)
+                ),
+              sql`), (`
+            )} 
+          )
+          ON CONFLICT (player_id,player_name) DO UPDATE SET is_active=true
+        `);
+      });
+
+      await connection.transaction(async client => {
+        //start working on game details pre-insert
+        //need to normalize team colors and determine elims before inserting the game
+        let redTeam;
+        let greenTeam;
+        // eslint-disable-next-line no-unused-vars
+        for (const [key, value] of teams) {
+          if (value.normal_team == "red") redTeam = value;
+          if (value.normal_team == "green") greenTeam = value;
+        }
+
+        //Assign elim bonuses
+        let greenBonus = 0,
+          redBonus = 0;
+        let redElim = 0,
+          greenElim = 0;
+        if (redTeam.livesLeft == 0) {
+          greenBonus = 10000;
+          redElim = 1;
+        }
+        if (greenTeam.livesLeft == 0) {
+          redBonus = 10000;
+          greenElim = 1;
+        }
+
+        //assign a winner
+        let winner = "";
+        //if both teams were elimed or neither were, we go to score
+        //otherwise, winner determined by elim regardless of score
+        if (redElim == greenElim) {
+          if (redTeam.score + redBonus > greenTeam.score + greenBonus)
+            winner = "red";
+          else winner = "green";
+        } else if (redElim) winner = "green";
+        else if (greenElim) winner = "red";
+        game.name = `Game @ ${moment(game.starttime).format("HH:mm")}`;
+
+        let gameRecord = await client.query(sql`
+          INSERT INTO games 
+            (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id)
+          VALUES
+            (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
+          RETURNING *
+        `);
+        let newGame = gameRecord.rows[0];
+
+        //insert the actions
+        //for (const action of actions) {
+        let chunkSize = 100;
+        for (let i = 0, len = actions.length; i < len; i += chunkSize) {
+          let chunk = actions.slice(i, i + chunkSize);
+          await client.query(sql`
+            INSERT INTO game_actions
+              (action_time, action_type, action_text, player, target, game_id) 
+            VALUES (
+              ${sql.join(
+                chunk.map(action =>
+                  sql.join(
+                    [
+                      action.time,
+                      action.type,
+                      action.action,
+                      action.player,
+                      action.target,
+                      newGame.id
+                    ],
+                    sql`, `
+                  )
+                ),
+                sql`), (`
+              )}
+            )
+          `);
+        }
+
+        //insert the score deltas
+        for (let i = 0, len = score_deltas.length; i < len; i += chunkSize) {
+          let chunk = score_deltas.slice(i, i + chunkSize);
+          await client.query(sql`
+            INSERT INTO score_deltas
+              (score_time, old, delta, new, ipl_id, player_id, game_id) 
+            VALUES (
+              ${sql.join(
+                chunk.map(delta =>
+                  sql.join(
+                    [
+                      delta.time,
+                      delta.old,
+                      delta.delta,
+                      delta.new,
+                      delta.player,
+                      null,
+                      newGame.id
+                    ],
+                    sql`, `
+                  )
+                ),
+                sql`), (`
+              )}
+            )
+          `);
+        }
+
+        //insert the scorecards
+        // eslint-disable-next-line no-unused-vars
+        for (const [key, player] of entities) {
+          if (player.type == "player") {
+            player.normal_team = teams.get(player.team).normal_team;
+
+            let team_elim = 0;
+            let elim_other_team = 0;
+            if (
+              (redElim && player.normal_team == "red") ||
+              (greenElim && player.normal_team == "green")
+            )
+              team_elim = 1;
+            if (
+              (redElim && player.normal_team == "green") ||
+              (greenElim && player.normal_team == "red")
+            )
+              elim_other_team = 1;
+
+            let scorecardRecord = await client.query(sql`
                   INSERT INTO scorecards
                     (
                       player_name,
@@ -565,53 +564,55 @@ exports.handler = async event => {
                     )
                     RETURNING *
                 `);
-                player.scorecard_id = scorecardRecord.rows[0].id;
-              }
-            }
+            player.scorecard_id = scorecardRecord.rows[0].id;
+          }
+        }
 
-            //Let's iterate through the entities and make some udpates in the database
-            for (let [key, player] of entities) {
-              if (player.type == "player") {
-                //1-Tie an internal lfstats id to players and targets in each action
-                await client.query(sql`
+        //Let's iterate through the entities and make some udpates in the database
+        // eslint-disable-next-line no-unused-vars
+        for (let [key, player] of entities) {
+          if (player.type == "player") {
+            //1-Tie an internal lfstats id to players and targets in each action
+            await client.query(sql`
                   UPDATE game_actions
                   SET player_id = ${player.lfstats_id}
                   WHERE player = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
                 `);
-                await client.query(sql`
+            await client.query(sql`
                   UPDATE game_actions
                   SET target_id = ${player.lfstats_id}
                   WHERE target = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
                 `);
-                //2-Tie an internal lfstats id to each score delta
-                await client.query(sql`
+            //2-Tie an internal lfstats id to each score delta
+            await client.query(sql`
                   UPDATE score_deltas
                   SET player_id = ${player.lfstats_id}
                   WHERE ipl_id = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
                 `);
-                //3-insert the hit and missile stats for each player
-                for (let [key, target] of player.hits) {
-                  if (entities.has(target.ipl_id)) {
-                    target.target_lfstats_id = entities.get(
-                      target.ipl_id
-                    ).lfstats_id;
-                  }
-                  await client.query(sql`
+            //3-insert the hit and missile stats for each player
+            // eslint-disable-next-line no-unused-vars
+            for (let [key, target] of player.hits) {
+              if (entities.has(target.ipl_id)) {
+                target.target_lfstats_id = entities.get(
+                  target.ipl_id
+                ).lfstats_id;
+              }
+              await client.query(sql`
                   INSERT INTO hits
                     (player_id, target_id, hits, missiles, scorecard_id)
                   VALUES
                     (${player.lfstats_id}, ${target.target_lfstats_id}, ${target.hits}, ${target.missiles}, ${player.scorecard_id})
                 `);
-                }
-                //4-fix penalties
-                if (player.penalties > 0) {
-                  let penalties = await client.many(sql`
+            }
+            //4-fix penalties
+            if (player.penalties > 0) {
+              let penalties = await client.many(sql`
                     SELECT *
                     FROM score_deltas
                     WHERE game_id = ${newGame.id}
@@ -622,24 +623,24 @@ exports.handler = async event => {
                     ORDER BY score_time ASC
                   `);
 
-                  for (const penalty of penalties) {
-                    //log the penalty - just going to use the common defaults
-                    await client.query(sql`
+              for (const penalty of penalties) {
+                //log the penalty - just going to use the common defaults
+                await client.query(sql`
                       INSERT INTO penalties
                         (scorecard_id)
                       VALUES
                         (${player.scorecard_id})
                     `);
 
-                    //Now the tricky bit, have to rebuild the score deltas from the point the penalty occurred
-                    //update the delta event to remove the -1000
-                    await client.query(sql`
+                //Now the tricky bit, have to rebuild the score deltas from the point the penalty occurred
+                //update the delta event to remove the -1000
+                await client.query(sql`
                       UPDATE score_deltas 
                       SET delta=0,new=new+1000 
                       WHERE id=${penalty.id}
                     `);
-                    //Now update a lot of rows, so scary
-                    await client.query(sql`
+                //Now update a lot of rows, so scary
+                await client.query(sql`
                       UPDATE score_deltas 
                       SET old=old+1000,new=new+1000 
                       WHERE game_id = ${newGame.id}
@@ -648,249 +649,243 @@ exports.handler = async event => {
                         AND
                           score_time>${penalty.score_time}
                     `);
-                  }
-                }
               }
             }
-            //calc mvp - lets fuckin go bro, the good shit aw yiss
-            let scorecards = await client.many(sql`
+          }
+        }
+        //calc mvp - lets fuckin go bro, the good shit aw yiss
+        let scorecards = await client.many(sql`
               SELECT *
               FROM scorecards
               WHERE game_id = ${newGame.id}
             `);
 
-            for (const scorecard of scorecards) {
-              //instantiate the fuckin mvp object bro
-              let mvp = 0;
-              let mvpDetails = {
-                positionBonus: {
-                  name: "Position Score Bonus",
-                  value: 0
-                },
-                missiledOpponent: {
-                  name: "Missiled Opponent",
-                  value: 0
-                },
-                acc: {
-                  name: "Accuracy",
-                  value: 0
-                },
-                nukesDetonated: {
-                  name: "Nukes Detonated",
-                  value: 0
-                },
-                nukesCanceled: {
-                  name: "Nukes Canceled",
-                  value: 0
-                },
-                medicHits: {
-                  name: "Medic Hits",
-                  value: 0
-                },
-                ownMedicHits: {
-                  name: "Own Medic Hits",
-                  value: 0
-                },
-                rapidFire: {
-                  name: "Activate Rapid Fire",
-                  value: 0
-                },
-                shoot3Hit: {
-                  name: "Shoot 3-Hit",
-                  value: 0
-                },
-                ammoBoost: {
-                  name: "Ammo Boost",
-                  value: 0
-                },
-                lifeBoost: {
-                  name: "Life Boost",
-                  value: 0
-                },
-                medicSurviveBonus: {
-                  name: "Medic Survival Bonus",
-                  value: 0
-                },
-                medicScoreBonus: {
-                  name: "Medic Score Bonus",
-                  value: 0
-                },
-                elimBonus: {
-                  name: "Elimination Bonus",
-                  value: 0
-                },
-                timesMissiled: {
-                  name: "Times Missiled",
-                  value: 0
-                },
-                missiledTeam: {
-                  name: "Missiled Team",
-                  value: 0
-                },
-                ownNukesCanceled: {
-                  name: "Your Nukes Canceled",
-                  value: 0
-                },
-                teamNukesCanceled: {
-                  name: "Team Nukes Canceled",
-                  value: 0
-                },
-                elimPenalty: {
-                  name: "Elimination Penalty",
-                  value: 0
-                },
-                penalties: {
-                  name: "Penalties",
-                  value: 0
-                }
-              };
+        for (const scorecard of scorecards) {
+          //instantiate the fuckin mvp object bro
+          let mvp = 0;
+          let mvpDetails = {
+            positionBonus: {
+              name: "Position Score Bonus",
+              value: 0
+            },
+            missiledOpponent: {
+              name: "Missiled Opponent",
+              value: 0
+            },
+            acc: {
+              name: "Accuracy",
+              value: 0
+            },
+            nukesDetonated: {
+              name: "Nukes Detonated",
+              value: 0
+            },
+            nukesCanceled: {
+              name: "Nukes Canceled",
+              value: 0
+            },
+            medicHits: {
+              name: "Medic Hits",
+              value: 0
+            },
+            ownMedicHits: {
+              name: "Own Medic Hits",
+              value: 0
+            },
+            rapidFire: {
+              name: "Activate Rapid Fire",
+              value: 0
+            },
+            shoot3Hit: {
+              name: "Shoot 3-Hit",
+              value: 0
+            },
+            ammoBoost: {
+              name: "Ammo Boost",
+              value: 0
+            },
+            lifeBoost: {
+              name: "Life Boost",
+              value: 0
+            },
+            medicSurviveBonus: {
+              name: "Medic Survival Bonus",
+              value: 0
+            },
+            medicScoreBonus: {
+              name: "Medic Score Bonus",
+              value: 0
+            },
+            elimBonus: {
+              name: "Elimination Bonus",
+              value: 0
+            },
+            timesMissiled: {
+              name: "Times Missiled",
+              value: 0
+            },
+            missiledTeam: {
+              name: "Missiled Team",
+              value: 0
+            },
+            ownNukesCanceled: {
+              name: "Your Nukes Canceled",
+              value: 0
+            },
+            teamNukesCanceled: {
+              name: "Team Nukes Canceled",
+              value: 0
+            },
+            elimPenalty: {
+              name: "Elimination Penalty",
+              value: 0
+            },
+            penalties: {
+              name: "Penalties",
+              value: 0
+            }
+          };
 
-              //POSITION BASED SCORE BONUS OMFG GIT GUD
-              switch (scorecard.position) {
-                case "Ammo Carrier":
-                  mvpDetails.positionBonus.value += Math.max(
-                    Math.floor((scorecard.score - 3000) / 10) * 0.01,
-                    0
-                  );
-                  break;
-                case "Commander":
-                  mvpDetails.positionBonus.value += Math.max(
-                    Math.floor((scorecard.score - 10000) / 10) * 0.01,
-                    0
-                  );
-                  break;
-                case "Heavy Weapons":
-                  mvpDetails.positionBonus.value += Math.max(
-                    Math.floor((scorecard.score - 7000) / 10) * 0.01,
-                    0
-                  );
-                  break;
-                case "Medic":
-                  mvpDetails.positionBonus.value += Math.max(
-                    Math.floor((scorecard.score - 2000) / 10) * 0.01,
-                    0
-                  );
-                  break;
-                case "Scout":
-                  mvpDetails.positionBonus.value += Math.max(
-                    Math.floor((scorecard.score - 6000) / 10) * 0.01,
-                    0
-                  );
-                  break;
-              }
+          //POSITION BASED SCORE BONUS OMFG GIT GUD
+          switch (scorecard.position) {
+            case "Ammo Carrier":
+              mvpDetails.positionBonus.value += Math.max(
+                Math.floor((scorecard.score - 3000) / 10) * 0.01,
+                0
+              );
+              break;
+            case "Commander":
+              mvpDetails.positionBonus.value += Math.max(
+                Math.floor((scorecard.score - 10000) / 10) * 0.01,
+                0
+              );
+              break;
+            case "Heavy Weapons":
+              mvpDetails.positionBonus.value += Math.max(
+                Math.floor((scorecard.score - 7000) / 10) * 0.01,
+                0
+              );
+              break;
+            case "Medic":
+              mvpDetails.positionBonus.value += Math.max(
+                Math.floor((scorecard.score - 2000) / 10) * 0.01,
+                0
+              );
+              break;
+            case "Scout":
+              mvpDetails.positionBonus.value += Math.max(
+                Math.floor((scorecard.score - 6000) / 10) * 0.01,
+                0
+              );
+              break;
+          }
 
-              //medic bonus score point
-              if ("Medic" == scorecard.position && scorecard.score >= 3000) {
-                mvpDetails.medicScoreBonus.value += 1;
-              }
+          //medic bonus score point
+          if ("Medic" == scorecard.position && scorecard.score >= 3000) {
+            mvpDetails.medicScoreBonus.value += 1;
+          }
 
-              //accuracy bonus
-              mvpDetails.acc.value += Math.round(scorecard.accuracy * 100) / 10;
+          //accuracy bonus
+          mvpDetails.acc.value += Math.round(scorecard.accuracy * 100) / 10;
 
-              //don't get missiled dummy
-              mvpDetails.timesMissiled.value += scorecard.times_missiled * -1;
+          //don't get missiled dummy
+          mvpDetails.timesMissiled.value += scorecard.times_missiled * -1;
 
-              //missile other people instead
-              switch (scorecard.position) {
-                case "Commander":
-                  mvpDetails.missiledOpponent.value +=
-                    scorecard.missiled_opponent;
-                  break;
-                case "Heavy Weapons":
-                  mvpDetails.missiledOpponent.value +=
-                    scorecard.missiled_opponent * 2;
-                  break;
-              }
+          //missile other people instead
+          switch (scorecard.position) {
+            case "Commander":
+              mvpDetails.missiledOpponent.value += scorecard.missiled_opponent;
+              break;
+            case "Heavy Weapons":
+              mvpDetails.missiledOpponent.value +=
+                scorecard.missiled_opponent * 2;
+              break;
+          }
 
-              //get dat 5-chain
-              mvpDetails.nukesDetonated.value += scorecard.nukes_detonated;
+          //get dat 5-chain
+          mvpDetails.nukesDetonated.value += scorecard.nukes_detonated;
 
-              //maybe hide better
-              if (scorecard.nukes_activated - scorecard.nukes_detonated > 0) {
-                let team = "red" == scorecard.team ? "green" : "red";
+          //maybe hide better
+          if (scorecard.nukes_activated - scorecard.nukes_detonated > 0) {
+            let team = "red" == scorecard.team ? "green" : "red";
 
-                let nukes = await client.any(sql`
+            let nukes = await client.any(sql`
                   SELECT SUM(nukes_canceled) as all_nukes_canceled
                   FROM scorecards
                   WHERE game_id = ${newGame.id} AND team = ${team}
                 `);
 
-                if (nukes.all_nukes_canceled > 0) {
-                  mvpDetails.ownNukesCanceled.value +=
-                    nukes.all_nukes_canceled * -3;
-                }
-              }
+            if (nukes.all_nukes_canceled > 0) {
+              mvpDetails.ownNukesCanceled.value +=
+                nukes.all_nukes_canceled * -3;
+            }
+          }
 
-              //make commanders cry
-              mvpDetails.nukesCanceled.value += scorecard.nukes_canceled * 3;
+          //make commanders cry
+          mvpDetails.nukesCanceled.value += scorecard.nukes_canceled * 3;
 
-              //medic tears are scrumptious
-              mvpDetails.medicHits.value += scorecard.medic_hits;
+          //medic tears are scrumptious
+          mvpDetails.medicHits.value += scorecard.medic_hits;
 
-              //dont be a venom
-              mvpDetails.ownMedicHits.value += scorecard.own_medic_hits * -1;
+          //dont be a venom
+          mvpDetails.ownMedicHits.value += scorecard.own_medic_hits * -1;
 
-              //push the little button
-              mvpDetails.rapidFire.value += scorecard.scout_rapid * 0.5;
-              mvpDetails.lifeBoost.value += scorecard.life_boost * 2;
-              mvpDetails.ammoBoost.value += scorecard.ammo_boost * 3;
+          //push the little button
+          mvpDetails.rapidFire.value += scorecard.scout_rapid * 0.5;
+          mvpDetails.lifeBoost.value += scorecard.life_boost * 2;
+          mvpDetails.ammoBoost.value += scorecard.ammo_boost * 3;
 
-              //survival bonuses/penalties
-              if (scorecard.lives_left > 0 && "Medic" == scorecard.position) {
-                mvpDetails.medicSurviveBonus.value += 2;
-              }
+          //survival bonuses/penalties
+          if (scorecard.lives_left > 0 && "Medic" == scorecard.position) {
+            mvpDetails.medicSurviveBonus.value += 2;
+          }
 
-              if (scorecard.lives_left <= 0 && "Medic" != scorecard.position) {
-                mvpDetails.elimPenalty.value += -1;
-              }
+          if (scorecard.lives_left <= 0 && "Medic" != scorecard.position) {
+            mvpDetails.elimPenalty.value += -1;
+          }
 
-              //apply penalties based on value of the penalty
-              let playerPenalties = await client.any(sql`
+          //apply penalties based on value of the penalty
+          let playerPenalties = await client.any(sql`
                 SELECT *
                 FROM penalties
                 WHERE scorecard_id = ${scorecard.id}
               `);
-              for (let penalty of playerPenalties) {
-                if ("Penalty Removed" != penalty.type) {
-                  mvpDetails.penalties.value += penalty.mvp_value;
-                }
-              }
+          for (let penalty of playerPenalties) {
+            if ("Penalty Removed" != penalty.type) {
+              mvpDetails.penalties.value += penalty.mvp_value;
+            }
+          }
 
-              //raping 3hits.  the math looks weird, but it works and gets the desired result
-              mvpDetails.shoot3Hit.value +=
-                Math.floor((scorecard.shot_3hit / 6) * 100) / 100;
+          //raping 3hits.  the math looks weird, but it works and gets the desired result
+          mvpDetails.shoot3Hit.value +=
+            Math.floor((scorecard.shot_3hit / 6) * 100) / 100;
 
-              //One time DK, one fucking time.
-              mvpDetails.teamNukesCanceled.value +=
-                scorecard.own_nuke_cancels * -3;
+          //One time DK, one fucking time.
+          mvpDetails.teamNukesCanceled.value += scorecard.own_nuke_cancels * -3;
 
-              //more venom points
-              mvpDetails.missiledTeam.value += scorecard.missiled_team * -3;
+          //more venom points
+          mvpDetails.missiledTeam.value += scorecard.missiled_team * -3;
 
-              //WINNER
-              //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
-              if (scorecard.elim_other_team > 0)
-                mvpDetails.elimBonus.value += Math.max(
-                  1,
-                  (900 - newGame.game_length) / 60
-                );
+          //WINNER
+          //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
+          if (scorecard.elim_other_team > 0)
+            mvpDetails.elimBonus.value += Math.max(
+              1,
+              (900 - newGame.game_length) / 60
+            );
 
-              //sum it up and insert
-              for (const prop in mvpDetails) {
-                mvp += mvpDetails[prop].value;
-              }
+          //sum it up and insert
+          for (const prop in mvpDetails) {
+            mvp += mvpDetails[prop].value;
+          }
 
-              await client.query(sql`
+          await client.query(sql`
                 UPDATE scorecards
                 SET mvp_points=${mvp}, mvp_details=${JSON.stringify(mvpDetails)}
                 WHERE id = ${scorecard.id}
               `);
-            }
-          }
-        });
-      } catch (e) {
-        throw e;
-      }
+        }
+      });
     });
 
     console.log("CHOMP COMPLETE");
