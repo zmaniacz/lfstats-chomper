@@ -49,7 +49,7 @@ exports.handler = async event => {
   var teams = new Map();
   var game = {};
   var actions = [];
-  var score_deltas = [];
+  var game_deltas = [];
 
   let chompFile = new Promise(resolve => {
     rl.on("line", line => {
@@ -106,6 +106,7 @@ exports.handler = async event => {
             desc: record[4],
             team: record[5],
             level: parseInt(record[6]),
+            category: record[7],
             position: ENTITY_TYPES[record[7]],
             lfstats_id: null,
             resupplies: 0,
@@ -177,7 +178,7 @@ exports.handler = async event => {
           }
         } else if (record[0] == 5) {
           //;5/score	time	entity	old	delta	new
-          score_deltas.push({
+          game_deltas.push({
             time: record[1],
             player: record[2],
             old: record[3],
@@ -265,14 +266,18 @@ exports.handler = async event => {
     await s3
       .copyObject(storageParams, function(err, data) {
         if (err) console.log(err, err.stack);
-        // an error occurred
-        else console.log("MOVED TDF TO ARCHIVE", data); // successful response
+        else console.log("MOVED TDF TO ARCHIVE", data);
+      })
+      .promise();
+
+    await s3
+      .deleteObject(params, function(err, data) {
+        if (err) console.log(err, err.stack);
+        else console.log("REMOVED TDF", data);
       })
       .promise();
 
     //IMPORT PROCESS
-    //TODO
-    //log gens and targets somehow in the actions
     await pool.connect(async connection => {
       //Let's see if the game already exists before we start doing too much
       let gameExist = await connection.maybeOne(
@@ -282,7 +287,10 @@ exports.handler = async event => {
             WHERE game_datetime=${game.starttime} AND centers.ipl_id=${game.center}`
       );
 
-      if (gameExist != null) return;
+      if (gameExist != null) {
+        console.log("CHOMP ABORTED: game exists");
+        return;
+      }
 
       let center = await connection.one(sql`
         SELECT *
@@ -421,10 +429,10 @@ exports.handler = async event => {
         }
 
         //insert the score deltas
-        for (let i = 0, len = score_deltas.length; i < len; i += chunkSize) {
-          let chunk = score_deltas.slice(i, i + chunkSize);
+        for (let i = 0, len = game_deltas.length; i < len; i += chunkSize) {
+          let chunk = game_deltas.slice(i, i + chunkSize);
           await client.query(sql`
-            INSERT INTO score_deltas
+            INSERT INTO game_deltas
               (score_time, old, delta, new, ipl_id, player_id, game_id) 
             VALUES (
               ${sql.join(
@@ -447,6 +455,57 @@ exports.handler = async event => {
             )
           `);
         }
+
+        //insert the teams
+        await client.query(sql`
+          INSERT INTO game_teams (index,name,color_enum,color_desc,game_id) 
+          VALUES 
+          (
+            ${sql.join(
+              [...teams].map(t =>
+                sql.join(
+                  [
+                    t[1].index,
+                    t[1].desc,
+                    t[1].color_enum,
+                    t[1].color_desc,
+                    newGame.id
+                  ],
+                  sql`, `
+                )
+              ),
+              sql`), (`
+            )} 
+          )
+        `);
+
+        //store non-player objects
+        //should be referees and targets/generators
+        await client.query(sql`
+          INSERT INTO game_objects (ipl_id,name,type,team,level,category,game_id) 
+          VALUES 
+          (
+            ${sql.join(
+              [...entities]
+                .filter(r => r[1].type != "player")
+                .map(r =>
+                  sql.join(
+                    [
+                      r[1].ipl_id,
+                      r[1].desc,
+                      r[1].type,
+                      r[1].team,
+                      r[1].level,
+                      r[1].category,
+                      newGame.id
+                    ],
+                    sql`, `
+                  )
+                ),
+              sql`), (`
+            )} 
+          )
+        `);
 
         //insert the scorecards
         // eslint-disable-next-line no-unused-vars
@@ -473,6 +532,7 @@ exports.handler = async event => {
                       player_name,
                       game_datetime,
                       team,
+                      team_index,
                       position,
                       survived,
                       shots_hit,
@@ -521,6 +581,7 @@ exports.handler = async event => {
                       ${player.desc},
                       ${game.starttime},
                       ${player.normal_team},
+                      ${player.team},
                       ${player.position},
                       ${player.survived},
                       ${player.shotsHit},
@@ -591,7 +652,7 @@ exports.handler = async event => {
                 `);
             //2-Tie an internal lfstats id to each score delta
             await client.query(sql`
-                  UPDATE score_deltas
+                  UPDATE game_deltas
                   SET player_id = ${player.lfstats_id}
                   WHERE ipl_id = ${player.ipl_id}
                     AND
@@ -616,7 +677,7 @@ exports.handler = async event => {
             if (player.penalties > 0) {
               let penalties = await client.many(sql`
                     SELECT *
-                    FROM score_deltas
+                    FROM game_deltas
                     WHERE game_id = ${newGame.id}
                       AND
                         player_id = ${player.lfstats_id}
@@ -637,13 +698,13 @@ exports.handler = async event => {
                 //Now the tricky bit, have to rebuild the score deltas from the point the penalty occurred
                 //update the delta event to remove the -1000
                 await client.query(sql`
-                      UPDATE score_deltas 
+                      UPDATE game_deltas 
                       SET delta=0,new=new+1000 
                       WHERE id=${penalty.id}
                     `);
                 //Now update a lot of rows, so scary
                 await client.query(sql`
-                      UPDATE score_deltas 
+                      UPDATE game_deltas 
                       SET old=old+1000,new=new+1000 
                       WHERE game_id = ${newGame.id}
                         AND
