@@ -26,15 +26,15 @@ exports.handler = async event => {
     Key: key
   };
 
-  const s3ReadStream = s3
-    .getObject(params)
-    .createReadStream()
-    .pipe(new AutoDetectDecoderStream())
-    .pipe(iconv.encodeStream("utf8"));
+  var jobId = null;
 
-  const rl = readline.createInterface({
-    input: s3ReadStream,
-    terminal: false
+  await pool.connect(async connection => {
+    let jobRecord = await connection.query(sql`
+      INSERT INTO game_imports (filename)
+      VALUES (${key})
+      RETURNING id
+    `);
+    jobId = jobRecord.rows[0].id;
   });
 
   const ENTITY_TYPES = {
@@ -50,212 +50,233 @@ exports.handler = async event => {
   var game = {};
   var actions = [];
   var game_deltas = [];
+  var gameId = null;
 
-  let chompFile = new Promise(resolve => {
-    rl.on("line", line => {
-      let record = line.split("\t");
-      if (record[0].includes(';"')) {
-        return;
-      } else {
-        if (record[0] == 0) {
-          //;0/version	file-version	program-version
-          game = {
-            center: record[3]
-          };
-        } else if (record[0] == 1) {
-          //;1/mission	type	desc	start
-          game = {
-            type: record[1],
-            desc: record[2],
-            start: parseInt(record[3]),
-            starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
-            ...game
-          };
-        } else if (record[0] == 2) {
-          //;2/team	index	desc	colour-enum	colour-desc
-          //normalize the team colors to either red or green because reasons
-          let normal_team = "";
-          if (record[4] == "Fire" || record[4] == "Red") {
-            normal_team = "red";
-          } else if (
-            record[4] == "Ice" ||
-            record[4] == "Yellow" ||
-            record[4] == "Blue" ||
-            record[4] == "Green" ||
-            record[4] == "Earth"
-          ) {
-            normal_team = "green";
-          }
-
-          let team = {
-            index: record[1],
-            desc: record[2],
-            color_enum: record[3],
-            color_desc: record[4],
-            score: 0,
-            livesLeft: 0,
-            normal_team: normal_team
-          };
-          teams.set(team.index, team);
-        } else if (record[0] == 3) {
-          //;3/entity-start	time	id	type	desc	team	level	category
-          let entity = {
-            start: parseInt(record[1]),
-            ipl_id: record[2],
-            type: record[3],
-            desc: record[4],
-            team: record[5],
-            level: parseInt(record[6]),
-            category: record[7],
-            position: ENTITY_TYPES[record[7]],
-            lfstats_id: null,
-            resupplies: 0,
-            bases_destroyed: 0,
-            hits: new Map()
-          };
-          entities.set(entity.ipl_id, entity);
-        } else if (record[0] == 4) {
-          //;4/event	time	type	varies
-          let action = {
-            time: record[1],
-            type: record[2],
-            player: null,
-            action: null,
-            target: null
-          };
-
-          if (record[2] == "0100" || record[2] == "0101") {
-            action.action = record[3];
-          } else {
-            action.player = record[3];
-            action.action = record[4];
-            action.target = typeof record[5] != "undefined" ? record[5] : null;
-          }
-
-          actions.push(action);
-
-          //track and total hits
-          if (
-            record[2] == "0205" ||
-            record[2] == "0206" ||
-            record[2] == "0306"
-          ) {
-            let player = entities.get(record[3]);
-            let target = entities.get(record[5]);
-
-            if (!player.hits.has(target.ipl_id)) {
-              player.hits.set(target.ipl_id, {
-                ipl_id: target.ipl_id,
-                hits: 0,
-                missiles: 0
-              });
-            }
-
-            if (record[2] == "0205" || record[2] == "0206")
-              player.hits.get(target.ipl_id).hits += 1;
-            if (record[2] == "0306")
-              player.hits.get(target.ipl_id).missiles += 1;
-          }
-
-          //compute game start, end and length
-          if (record[2] == "0101") {
-            let gameLength;
-            gameLength = (Math.round(record[1] / 1000) * 1000) / 1000;
-            game.endtime = moment(game.start, "YYYYMMDDHHmmss")
-              .seconds(gameLength)
-              .format();
-            game.gameLength = gameLength;
-          }
-
-          //sum up total resupplies
-          if (record[2] == "0500" || record[2] == "0502") {
-            entities.get(record[3]).resupplies += 1;
-          }
-
-          //sum up total bases destroyed
-          if (record[2] == "0303" || record[2] == "0204") {
-            entities.get(record[3]).bases_destroyed += 1;
-          }
-        } else if (record[0] == 5) {
-          //;5/score	time	entity	old	delta	new
-          game_deltas.push({
-            time: record[1],
-            player: record[2],
-            old: record[3],
-            delta: record[4],
-            new: record[5]
-          });
-        } else if (record[0] == 6) {
-          //;6/entity-end	time	id	type	score
-          let player = entities.get(record[2]);
-          player = {
-            end: parseInt(record[1]),
-            score: parseInt(record[4]),
-            survived:
-              (Math.round((record[1] - player.start) / 1000) * 1000) / 1000,
-            ...player
-          };
-          entities.set(player.ipl_id, player);
-        } else if (record[0] == 7) {
-          //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
-          let player = entities.get(record[1]);
-          player = {
-            accuracy: parseInt(record[2]) / Math.max(parseInt(record[3]), 1),
-            hit_diff: parseInt(record[21]) / Math.max(parseInt(record[4]), 1),
-            sp_earned:
-              parseInt(record[21]) +
-              parseInt(record[23]) * 2 +
-              player.bases_destroyed * 5,
-            sp_spent:
-              parseInt(record[8]) * 20 +
-              parseInt(record[14]) * 10 +
-              parseInt(record[15]) * 15,
-            shotsHit: parseInt(record[2]),
-            shotsFired: parseInt(record[3]),
-            timesZapped: parseInt(record[4]),
-            timesMissiled: parseInt(record[5]),
-            missileHits: parseInt(record[6]),
-            nukesDetonated: parseInt(record[7]),
-            nukesActivated: parseInt(record[8]),
-            nukeCancels: parseInt(record[9]),
-            medicHits: parseInt(record[10]),
-            ownMedicHits: parseInt(record[11]),
-            medicNukes: parseInt(record[12]),
-            scoutRapid: parseInt(record[13]),
-            lifeBoost: parseInt(record[14]),
-            ammoBoost: parseInt(record[15]),
-            livesLeft: parseInt(record[16]),
-            shotsLeft: parseInt(record[17]),
-            penalties: parseInt(record[18]),
-            shot3Hit: parseInt(record[19]),
-            ownNukeCancels: parseInt(record[20]),
-            shotOpponent: parseInt(record[21]),
-            shotTeam: parseInt(record[22]),
-            missiledOpponent: parseInt(record[23]),
-            missiledTeam: parseInt(record[24]),
-            ...player
-          };
-          //adjsut for penalties
-          if (player.penalties > 0) {
-            player.score += record[18] * 1000;
-          }
-          entities.set(record[1], player);
-          teams.get(player.team).livesLeft += player.livesLeft;
-          teams.get(player.team).score += player.score;
-        }
-      }
-    });
-    rl.on("error", () => {
-      console.log("READ ERROR");
-    });
-    rl.on("close", async () => {
-      console.log("READ COMPLETE");
-      resolve();
-    });
+  await pool.connect(async connection => {
+    await connection.query(sql`
+      UPDATE game_imports
+      SET status = ${"chomping file..."}
+      WHERE id = ${jobId}
+    `);
   });
 
+  async function chompFile(rl) {
+    return new Promise(resolve => {
+      rl.on("line", line => {
+        let record = line.split("\t");
+        if (record[0].includes(';"')) {
+          return;
+        } else {
+          if (record[0] == 0) {
+            //;0/version	file-version	program-version
+            game = {
+              center: record[3]
+            };
+          } else if (record[0] == 1) {
+            //;1/mission	type	desc	start
+            game = {
+              type: record[1],
+              desc: record[2],
+              start: parseInt(record[3]),
+              starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
+              ...game
+            };
+          } else if (record[0] == 2) {
+            //;2/team	index	desc	colour-enum	colour-desc
+            //normalize the team colors to either red or green because reasons
+            let normal_team = "";
+            if (record[4] == "Fire" || record[4] == "Red") {
+              normal_team = "red";
+            } else if (
+              record[4] == "Ice" ||
+              record[4] == "Yellow" ||
+              record[4] == "Blue" ||
+              record[4] == "Green" ||
+              record[4] == "Earth"
+            ) {
+              normal_team = "green";
+            }
+
+            let team = {
+              index: record[1],
+              desc: record[2],
+              color_enum: record[3],
+              color_desc: record[4],
+              score: 0,
+              livesLeft: 0,
+              normal_team: normal_team
+            };
+            teams.set(team.index, team);
+          } else if (record[0] == 3) {
+            //;3/entity-start	time	id	type	desc	team	level	category
+            let entity = {
+              start: parseInt(record[1]),
+              ipl_id: record[2],
+              type: record[3],
+              desc: record[4],
+              team: record[5],
+              level: parseInt(record[6]),
+              category: record[7],
+              position: ENTITY_TYPES[record[7]],
+              lfstats_id: null,
+              resupplies: 0,
+              bases_destroyed: 0,
+              hits: new Map()
+            };
+            entities.set(entity.ipl_id, entity);
+          } else if (record[0] == 4) {
+            //;4/event	time	type	varies
+            let action = {
+              time: record[1],
+              type: record[2],
+              player: null,
+              action: null,
+              target: null
+            };
+
+            if (record[2] == "0100" || record[2] == "0101") {
+              action.action = record[3];
+            } else {
+              action.player = record[3];
+              action.action = record[4];
+              action.target =
+                typeof record[5] != "undefined" ? record[5] : null;
+            }
+
+            actions.push(action);
+
+            //track and total hits
+            if (
+              record[2] == "0205" ||
+              record[2] == "0206" ||
+              record[2] == "0306"
+            ) {
+              let player = entities.get(record[3]);
+              let target = entities.get(record[5]);
+
+              if (!player.hits.has(target.ipl_id)) {
+                player.hits.set(target.ipl_id, {
+                  ipl_id: target.ipl_id,
+                  hits: 0,
+                  missiles: 0
+                });
+              }
+
+              if (record[2] == "0205" || record[2] == "0206")
+                player.hits.get(target.ipl_id).hits += 1;
+              if (record[2] == "0306")
+                player.hits.get(target.ipl_id).missiles += 1;
+            }
+
+            //compute game start, end and length
+            if (record[2] == "0101") {
+              let gameLength;
+              gameLength = (Math.round(record[1] / 1000) * 1000) / 1000;
+              game.endtime = moment(game.start, "YYYYMMDDHHmmss")
+                .seconds(gameLength)
+                .format();
+              game.gameLength = gameLength;
+            }
+
+            //sum up total resupplies
+            if (record[2] == "0500" || record[2] == "0502") {
+              entities.get(record[3]).resupplies += 1;
+            }
+
+            //sum up total bases destroyed
+            if (record[2] == "0303" || record[2] == "0204") {
+              entities.get(record[3]).bases_destroyed += 1;
+            }
+          } else if (record[0] == 5) {
+            //;5/score	time	entity	old	delta	new
+            game_deltas.push({
+              time: record[1],
+              player: record[2],
+              old: record[3],
+              delta: record[4],
+              new: record[5]
+            });
+          } else if (record[0] == 6) {
+            //;6/entity-end	time	id	type	score
+            let player = entities.get(record[2]);
+            player = {
+              end: parseInt(record[1]),
+              score: parseInt(record[4]),
+              survived:
+                (Math.round((record[1] - player.start) / 1000) * 1000) / 1000,
+              ...player
+            };
+            entities.set(player.ipl_id, player);
+          } else if (record[0] == 7) {
+            //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
+            let player = entities.get(record[1]);
+            player = {
+              accuracy: parseInt(record[2]) / Math.max(parseInt(record[3]), 1),
+              hit_diff: parseInt(record[21]) / Math.max(parseInt(record[4]), 1),
+              sp_earned:
+                parseInt(record[21]) +
+                parseInt(record[23]) * 2 +
+                player.bases_destroyed * 5,
+              sp_spent:
+                parseInt(record[8]) * 20 +
+                parseInt(record[14]) * 10 +
+                parseInt(record[15]) * 15,
+              shotsHit: parseInt(record[2]),
+              shotsFired: parseInt(record[3]),
+              timesZapped: parseInt(record[4]),
+              timesMissiled: parseInt(record[5]),
+              missileHits: parseInt(record[6]),
+              nukesDetonated: parseInt(record[7]),
+              nukesActivated: parseInt(record[8]),
+              nukeCancels: parseInt(record[9]),
+              medicHits: parseInt(record[10]),
+              ownMedicHits: parseInt(record[11]),
+              medicNukes: parseInt(record[12]),
+              scoutRapid: parseInt(record[13]),
+              lifeBoost: parseInt(record[14]),
+              ammoBoost: parseInt(record[15]),
+              livesLeft: parseInt(record[16]),
+              shotsLeft: parseInt(record[17]),
+              penalties: parseInt(record[18]),
+              shot3Hit: parseInt(record[19]),
+              ownNukeCancels: parseInt(record[20]),
+              shotOpponent: parseInt(record[21]),
+              shotTeam: parseInt(record[22]),
+              missiledOpponent: parseInt(record[23]),
+              missiledTeam: parseInt(record[24]),
+              ...player
+            };
+            //adjsut for penalties
+            if (player.penalties > 0) {
+              player.score += record[18] * 1000;
+            }
+            entities.set(record[1], player);
+            teams.get(player.team).livesLeft += player.livesLeft;
+            teams.get(player.team).score += player.score;
+          }
+        }
+      });
+      rl.on("error", () => {
+        console.log("READ ERROR");
+      });
+      rl.on("close", async () => {
+        console.log("READ COMPLETE");
+        resolve();
+      });
+    });
+  }
+
   try {
-    await chompFile;
+    const rl = readline.createInterface({
+      input: s3
+        .getObject(params)
+        .createReadStream()
+        .pipe(new AutoDetectDecoderStream())
+        .pipe(iconv.encodeStream("utf8")),
+      terminal: false
+    });
+
+    await chompFile(rl);
 
     const storageParams = {
       CopySource: bucket + "/" + key,
@@ -264,21 +285,25 @@ exports.handler = async event => {
     };
 
     await s3
-      .copyObject(storageParams, function(err, data) {
-        if (err) console.log(err, err.stack);
-        else console.log("MOVED TDF TO ARCHIVE", data);
-      })
-      .promise();
+      .copyObject(storageParams)
+      .promise()
+      .then(data => console.log("MOVED TDF TO ARCHIVE", data))
+      .catch(err => console.log(err, err.stack));
 
     await s3
-      .deleteObject(params, function(err, data) {
-        if (err) console.log(err, err.stack);
-        else console.log("REMOVED TDF", data);
-      })
-      .promise();
+      .deleteObject(params)
+      .promise()
+      .then(data => console.log("REMOVED TDF", data))
+      .catch(err => console.log(err, err.stack));
 
     //IMPORT PROCESS
     await pool.connect(async connection => {
+      await connection.query(sql`
+        UPDATE game_imports
+        SET status = ${"importing game..."}
+        WHERE id = ${jobId}
+      `);
+
       //Let's see if the game already exists before we start doing too much
       let gameExist = await connection.maybeOne(
         sql`SELECT games.id 
@@ -289,6 +314,11 @@ exports.handler = async event => {
 
       if (gameExist != null) {
         console.log("CHOMP ABORTED: game exists");
+        await connection.query(sql`
+          UPDATE game_imports
+          SET status = ${"game exists, import aborted"}, job_end=now()
+          WHERE id = ${jobId}
+        `);
         return;
       }
 
@@ -296,6 +326,12 @@ exports.handler = async event => {
         SELECT *
         FROM centers 
         WHERE ipl_id=${game.center}
+      `);
+
+      await connection.query(sql`
+        UPDATE game_imports
+        SET center_id=${center.id}
+        WHERE id = ${jobId}
       `);
 
       let playerRecords = await connection.transaction(async client => {
@@ -398,6 +434,13 @@ exports.handler = async event => {
           RETURNING *
         `);
         let newGame = gameRecord.rows[0];
+        gameId = newGame.id;
+
+        await client.query(sql`
+          UPDATE game_imports
+          SET status = ${"importing actions..."}
+          WHERE id = ${jobId}
+        `);
 
         //insert the actions
         //for (const action of actions) {
@@ -505,6 +548,12 @@ exports.handler = async event => {
               sql`), (`
             )} 
           )
+        `);
+
+        await client.query(sql`
+          UPDATE game_imports
+          SET status = ${"importing scorecards..."}
+          WHERE id = ${jobId}
         `);
 
         //insert the scorecards
@@ -716,6 +765,13 @@ exports.handler = async event => {
             }
           }
         }
+
+        await client.query(sql`
+          UPDATE game_imports
+          SET status = ${"calculating mvp..."}
+          WHERE id = ${jobId}
+        `);
+
         //calc mvp - lets fuckin go bro, the good shit aw yiss
         let scorecards = await client.many(sql`
               SELECT *
@@ -952,7 +1008,21 @@ exports.handler = async event => {
     });
 
     console.log("CHOMP COMPLETE");
+    await pool.connect(async connection => {
+      await connection.query(sql`
+        UPDATE game_imports
+        SET status = ${"success"},job_end=now(),game_id=${gameId}
+        WHERE id = ${jobId}
+      `);
+    });
   } catch (err) {
     console.log("CHOMP ERROR", err.stack);
+    await pool.connect(async connection => {
+      await connection.query(sql`
+        UPDATE game_imports
+        SET status = ${"failed"},job_end=now()
+        WHERE id = ${jobId}
+      `);
+    });
   }
 };
