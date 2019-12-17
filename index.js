@@ -12,7 +12,7 @@ const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 
 const pool = createPool(connectionString);
 
-exports.handler = async event => {
+exports.handler = async (event, context) => {
   console.log("BEGIN CHOMP");
   console.log("Received event:", JSON.stringify(event, null, 2));
 
@@ -26,15 +26,13 @@ exports.handler = async event => {
     Key: key
   };
 
-  var jobId = null;
+  const jobId = context.awsRequestId;
 
   await pool.connect(async connection => {
-    let jobRecord = await connection.query(sql`
-      INSERT INTO game_imports (filename)
-      VALUES (${key})
-      RETURNING id
+    await connection.query(sql`
+      INSERT INTO game_imports (id, filename)
+      VALUES (${jobId}, ${key})
     `);
-    jobId = jobRecord.rows[0].id;
   });
 
   const ENTITY_TYPES = {
