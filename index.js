@@ -28,13 +28,12 @@ exports.handler = async (event, context) => {
 
   const jobId = context.awsRequestId;
 
-  await pool.connect(async connection => {
-    await connection.query(sql`
-      INSERT INTO game_imports (id, filename)
-      VALUES (${jobId}, ${key})
-    `);
-  });
-
+  var entities = new Map();
+  var teams = new Map();
+  var game = {};
+  var actions = [];
+  var game_deltas = [];
+  var gameId = null;
   const ENTITY_TYPES = {
     1: "Commander",
     2: "Heavy Weapons",
@@ -42,21 +41,6 @@ exports.handler = async (event, context) => {
     4: "Ammo Carrier",
     5: "Medic"
   };
-
-  var entities = new Map();
-  var teams = new Map();
-  var game = {};
-  var actions = [];
-  var game_deltas = [];
-  var gameId = null;
-
-  await pool.connect(async connection => {
-    await connection.query(sql`
-      UPDATE game_imports
-      SET status = ${"chomping file..."}
-      WHERE id = ${jobId}
-    `);
-  });
 
   async function chompFile(rl) {
     return new Promise(resolve => {
@@ -264,38 +248,43 @@ exports.handler = async (event, context) => {
     });
   }
 
-  try {
-    const rl = readline.createInterface({
-      input: s3
-        .getObject(params)
-        .createReadStream()
-        .pipe(new AutoDetectDecoderStream())
-        .pipe(iconv.encodeStream("utf8")),
-      terminal: false
-    });
+  await pool.connect(async connection => {
+    await connection.query(sql`
+      INSERT INTO game_imports (id, filename, status)
+      VALUES (${jobId}, ${key}, ${"starting chomp..."})
+    `);
 
-    await chompFile(rl);
+    try {
+      const rl = readline.createInterface({
+        input: s3
+          .getObject(params)
+          .createReadStream()
+          .pipe(new AutoDetectDecoderStream())
+          .pipe(iconv.encodeStream("utf8")),
+        terminal: false
+      });
 
-    const storageParams = {
-      CopySource: bucket + "/" + key,
-      Bucket: targetBucket,
-      Key: `${game.center}_${game.start}_${game.desc.replace(/ /g, "-")}.tdf`
-    };
+      await chompFile(rl);
 
-    await s3
-      .copyObject(storageParams)
-      .promise()
-      .then(data => console.log("MOVED TDF TO ARCHIVE", data))
-      .catch(err => console.log(err, err.stack));
+      const storageParams = {
+        CopySource: bucket + "/" + key,
+        Bucket: targetBucket,
+        Key: `${game.center}_${game.start}_${game.desc.replace(/ /g, "-")}.tdf`
+      };
 
-    await s3
-      .deleteObject(params)
-      .promise()
-      .then(data => console.log("REMOVED TDF", data))
-      .catch(err => console.log(err, err.stack));
+      await s3
+        .copyObject(storageParams)
+        .promise()
+        .then(data => console.log("MOVED TDF TO ARCHIVE", data))
+        .catch(err => console.log(err, err.stack));
 
-    //IMPORT PROCESS
-    await pool.connect(async connection => {
+      await s3
+        .deleteObject(params)
+        .promise()
+        .then(data => console.log("REMOVED TDF", data))
+        .catch(err => console.log(err, err.stack));
+
+      //IMPORT PROCESS
       await connection.query(sql`
         UPDATE game_imports
         SET status = ${"importing game..."}
@@ -1003,24 +992,23 @@ exports.handler = async (event, context) => {
               `);
         }
       });
-    });
 
-    console.log("CHOMP COMPLETE");
-    await pool.connect(async connection => {
+      console.log("CHOMP COMPLETE");
+
       await connection.query(sql`
         UPDATE game_imports
         SET status = ${"success"},job_end=now(),game_id=${gameId}
         WHERE id = ${jobId}
       `);
-    });
-  } catch (err) {
-    console.log("CHOMP ERROR", err.stack);
-    await pool.connect(async connection => {
-      await connection.query(sql`
+    } catch (err) {
+      console.log("CHOMP ERROR", err.stack);
+      await pool.connect(async connection => {
+        await connection.query(sql`
         UPDATE game_imports
         SET status = ${"failed"},job_end=now()
         WHERE id = ${jobId}
       `);
-    });
-  }
+      });
+    }
+  });
 };
