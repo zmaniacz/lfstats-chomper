@@ -21,6 +21,8 @@ exports.handler = async (event, context) => {
     event.Records[0].s3.object.key.replace(/\+/g, " ")
   );
 
+  const eventId = key.split("/")[0];
+
   const params = {
     Bucket: bucket,
     Key: key
@@ -415,9 +417,9 @@ exports.handler = async (event, context) => {
 
         let gameRecord = await client.query(sql`
           INSERT INTO games 
-            (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id)
+            (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id)
           VALUES
-            (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id})
+            (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id},${eventId})
           RETURNING *
         `);
         let newGame = gameRecord.rows[0];
@@ -610,7 +612,8 @@ exports.handler = async (event, context) => {
                       game_id,
                       type,
                       player_id,
-                      center_id
+                      center_id,
+                      event_id
                     )
                   VALUES
                     (
@@ -659,7 +662,8 @@ exports.handler = async (event, context) => {
                       ${newGame.id},
                       'social',
                       ${player.lfstats_id},
-                      ${center.id}
+                      ${center.id},
+                      ${eventId}
                     )
                     RETURNING *
                 `);
