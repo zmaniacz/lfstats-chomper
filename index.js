@@ -116,13 +116,18 @@ exports.handler = async (event, context) => {
               type: record[2],
               player: null,
               action: null,
-              target: null
+              target: null,
+              team: null
             };
+
+            let player = null;
 
             if (record[2] == "0100" || record[2] == "0101") {
               action.action = record[3];
             } else {
+              player = entities.get(record[3]);
               action.player = record[3];
+              action.team = player.team;
               action.action = record[4];
               action.target =
                 typeof record[5] != "undefined" ? record[5] : null;
@@ -136,7 +141,6 @@ exports.handler = async (event, context) => {
               record[2] == "0206" ||
               record[2] == "0306"
             ) {
-              let player = entities.get(record[3]);
               let target = entities.get(record[5]);
 
               if (!player.hits.has(target.ipl_id)) {
@@ -173,10 +177,12 @@ exports.handler = async (event, context) => {
               entities.get(record[3]).bases_destroyed += 1;
             }
           } else if (record[0] == 5) {
+            let player = entities.get(record[2]);
             //;5/score	time	entity	old	delta	new
             game_deltas.push({
               time: record[1],
               player: record[2],
+              team: player.team,
               old: record[3],
               delta: record[4],
               new: record[5]
@@ -439,7 +445,7 @@ exports.handler = async (event, context) => {
           let chunk = actions.slice(i, i + chunkSize);
           await client.query(sql`
             INSERT INTO game_actions
-              (action_time, action_type, action_text, player, target, game_id) 
+              (action_time, action_type, action_text, player, target, team_index, game_id) 
             VALUES (
               ${sql.join(
                 chunk.map(action =>
@@ -450,6 +456,7 @@ exports.handler = async (event, context) => {
                       action.action,
                       action.player,
                       action.target,
+                      action.team,
                       newGame.id
                     ],
                     sql`, `
@@ -466,7 +473,7 @@ exports.handler = async (event, context) => {
           let chunk = game_deltas.slice(i, i + chunkSize);
           await client.query(sql`
             INSERT INTO game_deltas
-              (score_time, old, delta, new, ipl_id, player_id, game_id) 
+              (score_time, old, delta, new, ipl_id, player_id, team_index, game_id) 
             VALUES (
               ${sql.join(
                 chunk.map(delta =>
@@ -478,6 +485,7 @@ exports.handler = async (event, context) => {
                       delta.new,
                       delta.player,
                       null,
+                      delta.team,
                       newGame.id
                     ],
                     sql`, `
@@ -487,34 +495,6 @@ exports.handler = async (event, context) => {
               )}
             )
           `);
-        }
-
-        //insert the teams
-        let teamRecords = await client.query(sql`
-          INSERT INTO game_teams (index,name,color_enum,color_desc,game_id) 
-          VALUES 
-          (
-            ${sql.join(
-              [...teams].map(t =>
-                sql.join(
-                  [
-                    t[1].index,
-                    t[1].desc,
-                    t[1].color_enum,
-                    t[1].color_desc,
-                    newGame.id
-                  ],
-                  sql`, `
-                )
-              ),
-              sql`), (`
-            )} 
-          )
-          RETURNING *
-        `);
-
-        for (let team of teamRecords.rows) {
-          teams.get(`${team.index}`).lfstats_id = team.id;
         }
 
         //store non-player objects
@@ -544,6 +524,48 @@ exports.handler = async (event, context) => {
             )} 
           )
         `);
+
+        //insert the teams
+        let teamRecords = await client.query(sql`
+          INSERT INTO game_teams (index,name,color_enum,color_desc,game_id) 
+          VALUES 
+          (
+            ${sql.join(
+              [...teams].map(t =>
+                sql.join(
+                  [
+                    t[1].index,
+                    t[1].desc,
+                    t[1].color_enum,
+                    t[1].color_desc,
+                    newGame.id
+                  ],
+                  sql`, `
+                )
+              ),
+              sql`), (`
+            )} 
+          )
+          RETURNING *
+        `);
+
+        for (let team of teamRecords.rows) {
+          teams.get(`${team.index}`).lfstats_id = team.id;
+          await client.query(sql`
+            UPDATE game_actions
+            SET team_id = ${team.id}
+            WHERE team_index = ${team.index}
+              AND
+                  game_id = ${newGame.id}
+          `);
+          await client.query(sql`
+            UPDATE game_deltas
+            SET team_id = ${team.id}
+            WHERE team_index = ${team.index}
+              AND
+                  game_id = ${newGame.id}
+        `);
+        }
 
         await client.query(sql`
           UPDATE game_imports
