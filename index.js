@@ -88,7 +88,8 @@ exports.handler = async (event, context) => {
               color_desc: record[4],
               score: 0,
               livesLeft: 0,
-              normal_team: normal_team
+              normal_team: normal_team,
+              lfstats_id: null
             };
             teams.set(team.index, team);
           } else if (record[0] == 3) {
@@ -489,7 +490,7 @@ exports.handler = async (event, context) => {
         }
 
         //insert the teams
-        await client.query(sql`
+        let teamRecords = await client.query(sql`
           INSERT INTO game_teams (index,name,color_enum,color_desc,game_id) 
           VALUES 
           (
@@ -509,7 +510,12 @@ exports.handler = async (event, context) => {
               sql`), (`
             )} 
           )
+          RETURNING *
         `);
+
+        for (let team of teamRecords.rows) {
+          teams.get(`${team.index}`).lfstats_id = team.id;
+        }
 
         //store non-player objects
         //should be referees and targets/generators
@@ -549,18 +555,18 @@ exports.handler = async (event, context) => {
         // eslint-disable-next-line no-unused-vars
         for (const [key, player] of entities) {
           if (player.type == "player") {
-            player.normal_team = teams.get(player.team).normal_team;
+            let team = teams.get(player.team);
 
             let team_elim = 0;
             let elim_other_team = 0;
             if (
-              (redElim && player.normal_team == "red") ||
-              (greenElim && player.normal_team == "green")
+              (redElim && team.normal_team == "red") ||
+              (greenElim && team.normal_team == "green")
             )
               team_elim = 1;
             if (
-              (redElim && player.normal_team == "green") ||
-              (greenElim && player.normal_team == "red")
+              (redElim && team.normal_team == "green") ||
+              (greenElim && team.normal_team == "red")
             )
               elim_other_team = 1;
 
@@ -570,7 +576,6 @@ exports.handler = async (event, context) => {
                       player_name,
                       game_datetime,
                       team,
-                      team_index,
                       position,
                       survived,
                       shots_hit,
@@ -613,14 +618,14 @@ exports.handler = async (event, context) => {
                       type,
                       player_id,
                       center_id,
-                      event_id
+                      event_id,
+                      team_id
                     )
                   VALUES
                     (
                       ${player.desc},
                       ${game.starttime},
-                      ${player.normal_team},
-                      ${player.team},
+                      ${team.normal_team},
                       ${player.position},
                       ${player.survived},
                       ${player.shotsHit},
@@ -663,7 +668,8 @@ exports.handler = async (event, context) => {
                       'social',
                       ${player.lfstats_id},
                       ${center.id},
-                      ${eventId}
+                      ${eventId},
+                      ${team.lfstats_id}
                     )
                     RETURNING *
                 `);
