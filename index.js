@@ -318,15 +318,15 @@ exports.handler = async (event, context) => {
         return;
       }
 
-      let center = await connection.one(sql`
+      let event = await connection.one(sql`
         SELECT *
-        FROM centers 
-        WHERE ipl_id=${game.center}
+        FROM events 
+        WHERE id=${eventId}
       `);
 
       await connection.query(sql`
         UPDATE game_imports
-        SET center_id=${center.id}
+        SET center_id=${event.center_id}
         WHERE id = ${jobId}
       `);
 
@@ -426,7 +426,7 @@ exports.handler = async (event, context) => {
           INSERT INTO games 
             (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id)
           VALUES
-            (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},'social',${center.id},${eventId})
+            (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id})
           RETURNING *
         `);
         let newGame = gameRecord.rows[0];
@@ -687,10 +687,10 @@ exports.handler = async (event, context) => {
                       ${player.sp_earned},
                       ${player.sp_spent},
                       ${newGame.id},
-                      'social',
+                      ${event.type},
                       ${player.lfstats_id},
-                      ${center.id},
-                      ${eventId},
+                      ${event.center_id},
+                      ${event.id},
                       ${team.lfstats_id}
                     )
                     RETURNING *
