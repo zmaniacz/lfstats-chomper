@@ -830,10 +830,10 @@ exports.handler = async (event, context) => {
               name: "Own Medic Hits",
               value: 0
             },
-            rapidFire: {
+            /*rapidFire: {
               name: "Activate Rapid Fire",
               value: 0
-            },
+            },*/
             shoot3Hit: {
               name: "Shoot 3-Hit",
               value: 0
@@ -969,7 +969,7 @@ exports.handler = async (event, context) => {
           mvpDetails.ownMedicHits.value += scorecard.own_medic_hits * -1;
 
           //push the little button
-          mvpDetails.rapidFire.value += scorecard.scout_rapid * 0.5;
+          //mvpDetails.rapidFire.value += scorecard.scout_rapid * 0.5;
           mvpDetails.lifeBoost.value += scorecard.life_boost * 2;
           mvpDetails.ammoBoost.value += scorecard.ammo_boost * 3;
 
@@ -996,7 +996,7 @@ exports.handler = async (event, context) => {
 
           //raping 3hits.  the math looks weird, but it works and gets the desired result
           mvpDetails.shoot3Hit.value +=
-            Math.floor((scorecard.shot_3hit / 6) * 100) / 100;
+            Math.floor((scorecard.shot_3hit / 5) * 100) / 100;
 
           //One time DK, one fucking time.
           mvpDetails.teamNukesCanceled.value += scorecard.own_nuke_cancels * -3;
