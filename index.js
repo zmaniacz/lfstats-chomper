@@ -57,12 +57,13 @@ exports.handler = async (event, context) => {
               center: record[3]
             };
           } else if (record[0] == 1) {
-            //;1/mission	type	desc	start
+            //;1/mission	type	desc	start duration
             game = {
               type: record[1],
               desc: record[2],
               start: parseInt(record[3]),
               starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
+              duration: record[4],
               ...game
             };
           } else if (record[0] == 2) {
@@ -424,9 +425,9 @@ exports.handler = async (event, context) => {
 
         let gameRecord = await client.query(sql`
           INSERT INTO games 
-            (game_name,game_description,game_datetime,game_length,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id)
+            (game_name,game_description,game_datetime,game_length,duration,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id)
           VALUES
-            (${game.name},'',${game.starttime},${game.gameLength},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id})
+            (${game.name},'',${game.starttime},${game.gameLength},${game.duration},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id})
           RETURNING *
         `);
         let newGame = gameRecord.rows[0];
