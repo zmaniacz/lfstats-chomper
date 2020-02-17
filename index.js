@@ -528,7 +528,7 @@ exports.handler = async (event, context) => {
 
         //insert the teams
         let teamRecords = await client.query(sql`
-          INSERT INTO game_teams (index,name,color_enum,color_desc,game_id) 
+          INSERT INTO game_teams (index,name,color_enum,color_desc,color_normal,game_id) 
           VALUES 
           (
             ${sql.join(
@@ -539,6 +539,7 @@ exports.handler = async (event, context) => {
                     t[1].desc,
                     t[1].color_enum,
                     t[1].color_desc,
+                    t[1].normal_team,
                     newGame.id
                   ],
                   sql`, `
