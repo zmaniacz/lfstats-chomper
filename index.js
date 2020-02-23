@@ -602,6 +602,7 @@ exports.handler = async (event, context) => {
                       team,
                       position,
                       survived,
+                      uptime,
                       shots_hit,
                       shots_fired,
                       times_zapped,
@@ -652,6 +653,7 @@ exports.handler = async (event, context) => {
                       ${team.normal_team},
                       ${player.position},
                       ${player.survived},
+                      ${null},
                       ${player.shotsHit},
                       ${player.shotsFired},
                       ${player.timesZapped},
@@ -1019,9 +1021,42 @@ exports.handler = async (event, context) => {
             mvp += mvpDetails[prop].value;
           }
 
+          // unrelated to mvp - calculate uptime
+          const player = entities.get(scorecard.player_id);
+
+          const deacs = actions
+            .filter(
+              action =>
+                action.time < player.survived &&
+                // enemy nuke detonated
+                ((action.team !== player.team && action.type === "0405") ||
+                  (action.target === player.lfstats_id &&
+                    // shot, missiled, resupplied (x2) or penalised
+                    ["0206", "0306", "0500", "0502", "0600"].includes(
+                      action.type
+                    )))
+            )
+            .sort((a, b) => a.time - b.time);
+
+          let uptime = 0;
+          let lastDeacTime = 0;
+
+          deacs.forEach(deac => {
+            const deacTimeDiff = deac.time - lastDeacTime;
+
+            uptime += Math.max(deacTimeDiff - 8000, 0);
+
+            lastDeacTime = deac.time;
+          });
+
+          // add uptime from the last deac up to the player survived/eliminated time
+          uptime += player.survived * 1000 - lastDeacTime;
+
           await client.query(sql`
                 UPDATE scorecards
-                SET mvp_points=${mvp}, mvp_details=${JSON.stringify(mvpDetails)}
+                SET mvp_points=${mvp}, mvp_details=${JSON.stringify(
+            mvpDetails
+          )}, uptime=${uptime}
                 WHERE id = ${scorecard.id}
               `);
         }
