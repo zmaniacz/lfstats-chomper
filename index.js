@@ -620,7 +620,7 @@ exports.handler = async (event, context) => {
                       score,
                       max_score,
                       shots_left,
-                      penalties,
+                      penalty_count,
                       shot_3hit,
                       elim_other_team,
                       team_elim,
@@ -908,7 +908,7 @@ exports.handler = async (event, context) => {
               break;
             case "Medic":
               mvpDetails.positionBonus.value += Math.max(
-                Math.floor((scorecard.score - 2000) / 10) * 0.01,
+                Math.floor((scorecard.score - 2000) / 10) * 0.02,
                 0
               );
               break;
@@ -920,10 +920,10 @@ exports.handler = async (event, context) => {
               break;
           }
 
-          //medic bonus score point
-          if ("Medic" == scorecard.position && scorecard.score >= 3000) {
+          //medic bonus score point - removed on 2020-02-22
+          /*if ("Medic" == scorecard.position && scorecard.score >= 3000) {
             mvpDetails.medicScoreBonus.value += 1;
-          }
+          }*/
 
           //accuracy bonus
           mvpDetails.acc.value += Math.round(scorecard.accuracy * 100) / 10;
@@ -972,7 +972,7 @@ exports.handler = async (event, context) => {
 
           //push the little button
           //mvpDetails.rapidFire.value += scorecard.scout_rapid * 0.5;
-          mvpDetails.lifeBoost.value += scorecard.life_boost * 2;
+          mvpDetails.lifeBoost.value += scorecard.life_boost * 3;
           mvpDetails.ammoBoost.value += scorecard.ammo_boost * 3;
 
           //survival bonuses/penalties
