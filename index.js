@@ -63,7 +63,7 @@ exports.handler = async (event, context) => {
               desc: record[2],
               start: parseInt(record[3]),
               starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
-              duration: record[4],
+              duration: (Math.round(record[4] / 1000) * 1000) / 1000,
               ...game
             };
           } else if (record[0] == 2) {
@@ -1009,10 +1009,9 @@ exports.handler = async (event, context) => {
           //WINNER
           //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
           if (scorecard.elim_other_team > 0)
-            mvpDetails.elimBonus.value += Math.max(
-              1,
-              (900 - newGame.game_length) / 60
-            );
+            mvpDetails.elimBonus.value += Number.parseFloat(
+              Math.max(1, (newGame.duration - newGame.game_length) / 60)
+            ).toFixed(2);
 
           //sum it up and insert
           for (const prop in mvpDetails) {
