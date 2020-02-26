@@ -797,8 +797,9 @@ exports.handler = async (event, context) => {
 
         //calc mvp - lets fuckin go bro, the good shit aw yiss
         let scorecards = await client.many(sql`
-              SELECT *
+              SELECT scorecards.*, players.ipl_id
               FROM scorecards
+              LEFT JOIN players ON scorecards.player_id = players.id
               WHERE game_id = ${newGame.id}
             `);
 
@@ -1012,8 +1013,11 @@ exports.handler = async (event, context) => {
           //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
           if (scorecard.elim_other_team > 0)
             mvpDetails.elimBonus.value += Number.parseFloat(
-              Math.max(1, (newGame.duration - newGame.game_length) / 60)
-            ).toFixed(2);
+              Math.max(
+                1.0,
+                (newGame.duration - newGame.game_length) / 60
+              ).toFixed(2)
+            );
 
           //sum it up and insert
           for (const prop in mvpDetails) {
@@ -1021,15 +1025,15 @@ exports.handler = async (event, context) => {
           }
 
           // unrelated to mvp - calculate uptime
-          const player = entities.get(scorecard.player_id);
+          const player = entities.get(scorecard.ipl_id);
 
           const deacs = actions
             .filter(
               action =>
-                action.time < player.survived &&
+                action.time < player.end &&
                 // enemy nuke detonated
                 ((action.team !== player.team && action.type === "0405") ||
-                  (action.target === player.lfstats_id &&
+                  (action.target === player.ipl_id &&
                     // shot, missiled, resupplied (x2) or penalised
                     ["0206", "0306", "0500", "0502", "0600"].includes(
                       action.type
@@ -1049,7 +1053,7 @@ exports.handler = async (event, context) => {
           });
 
           // add uptime from the last deac up to the player survived/eliminated time
-          uptime += player.survived * 1000 - lastDeacTime;
+          uptime += player.end - lastDeacTime;
 
           await client.query(sql`
                 UPDATE scorecards
