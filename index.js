@@ -52,7 +52,7 @@ exports.handler = async (event, context) => {
           return;
         } else {
           if (record[0] == 0) {
-            //;0/version	file-version	program-version
+            //;0/info	file-version	program-version	centre
             game = {
               center: record[3]
             };
@@ -66,6 +66,7 @@ exports.handler = async (event, context) => {
               duration: (Math.round(record[4] / 1000) * 1000) / 1000,
               ...game
             };
+            game.tdfKey = `${game.center}_${game.start}.tdf`;
           } else if (record[0] == 2) {
             //;2/team	index	desc	colour-enum	colour-desc
             //normalize the team colors to either red or green because reasons
@@ -279,7 +280,7 @@ exports.handler = async (event, context) => {
       const storageParams = {
         CopySource: bucket + "/" + key,
         Bucket: targetBucket,
-        Key: `${game.center}_${game.start}_${game.desc.replace(/ /g, "-")}.tdf`
+        Key: game.tdfKey
       };
 
       await s3
@@ -425,9 +426,9 @@ exports.handler = async (event, context) => {
 
         let gameRecord = await client.query(sql`
           INSERT INTO games 
-            (game_name,game_description,game_datetime,game_length,duration,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id)
+            (game_name,game_description,game_datetime,game_length,duration,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id,tdf_key)
           VALUES
-            (${game.name},'',${game.starttime},${game.gameLength},${game.duration},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id})
+            (${game.name},'',${game.starttime},${game.gameLength},${game.duration},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id},${game.tdfKey})
           RETURNING *
         `);
         let newGame = gameRecord.rows[0];
