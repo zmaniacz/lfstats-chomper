@@ -340,9 +340,7 @@ exports.handler = async (event, context) => {
           VALUES (
             ${sql.join(
               [...entities]
-                .filter(
-                  p => p[1].type === "player" && p[1].ipl_id.startsWith("#")
-                )
+                .filter(p => p[1].type === "player")
                 .sort()
                 .map(p => sql.join([p[1].desc, p[1].ipl_id], sql`, `)),
               sql`), (`
@@ -353,14 +351,7 @@ exports.handler = async (event, context) => {
         `);
       });
 
-      //assign out the lfstats IDs to our entities object so we can use them later
-      for (let [, player] of entities) {
-        if (player.type == "player" && player.ipl_id.startsWith("@"))
-          //not a member, so assign the generic player id
-          player.lfstats_id = 0;
-      }
-
-      //update the rest of our entities with their lfstats IDs
+      //update our entities with their lfstats IDs for future reference
       for (let player of playerRecords.rows) {
         entities.get(player.ipl_id).lfstats_id = player.id;
       }
