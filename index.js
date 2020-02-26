@@ -595,6 +595,8 @@ exports.handler = async (event, context) => {
                       position,
                       survived,
                       uptime,
+                      resupply_downtime,
+                      other_downtime,
                       shots_hit,
                       shots_fired,
                       times_zapped,
@@ -645,6 +647,8 @@ exports.handler = async (event, context) => {
                       ${team.normal_team},
                       ${player.position},
                       ${player.survived},
+                      ${null},
+                      ${null},
                       ${null},
                       ${player.shotsHit},
                       ${player.shotsFired},
@@ -1017,8 +1021,16 @@ exports.handler = async (event, context) => {
           }
           mvp = Math.max(0, mvp);
 
-          // unrelated to mvp - calculate uptime
+          // unrelated to mvp - calculate downtime caused by either resupply or other deactivation, and uptime
           const player = entities.get(scorecard.ipl_id);
+
+          let uptime = 0;
+          let resupplyDowntime = 0;
+          let otherDowntime = 0;
+
+          // the action codes for various deactivation events
+          const resuppliedActionCodes = ["0500", "0502"];
+          const deactivatedActionCodes = ["0206", "0306", "0600"];
 
           const deacs = actions
             .filter(
@@ -1027,32 +1039,56 @@ exports.handler = async (event, context) => {
                 // enemy nuke detonated
                 ((action.team !== player.team && action.type === "0405") ||
                   (action.target === player.ipl_id &&
-                    // shot, missiled, resupplied (x2) or penalised
-                    ["0206", "0306", "0500", "0502", "0600"].includes(
-                      action.type
-                    )))
+                    // resupplied (x2), shot, missiled or penalised
+                    [
+                      ...resuppliedActionCodes,
+                      ...deactivatedActionCodes
+                    ].includes(action.type)))
             )
             .sort((a, b) => a.time - b.time);
 
-          let uptime = 0;
-          let lastDeacTime = 0;
+          deacs.forEach((deac, i) => {
+            // this may not exist, e.g. when i === 0
+            const prevDeac = deacs[i - 1];
+            // this may not exist, e.g. when i === deacs.length - 1
+            const nextDeac = deacs[i + 1];
 
-          deacs.forEach(deac => {
-            const deacTimeDiff = deac.time - lastDeacTime;
+            // calculate how long the player was down as a result of this deactivation.
+            // if the player was deactivated again before they came up (e.g. reset, nuke), then this deac duration is less than 8s
+            const deacDuration = Math.min(
+              ((nextDeac && nextDeac.time) || player.end) - deac.time,
+              8000
+            );
 
-            uptime += Math.max(deacTimeDiff - 8000, 0);
+            // calculate how much time passed between the previous deactivation and this one.
+            const deacTimeDiff =
+              deac.time - ((prevDeac && prevDeac.time) || player.start);
 
-            lastDeacTime = deac.time;
+            // now calculate any uptime the player had between the deacs
+            // if the player was deactivated again before they came up (e.g. reset, nuke), then this will be 0
+            const uptimeDuration = Math.max(deacTimeDiff - 8000, 0);
+
+            if ([resuppliedActionCodes].includes(deac.type)) {
+              // this was a resupply deactivation
+              resupplyDowntime += deacDuration;
+            } else {
+              // this was a non-resupply deactivation
+              otherDowntime += deacDuration;
+            }
+
+            // add the uptime to the total, if any
+            uptime += uptimeDuration;
           });
 
-          // add uptime from the last deac up to the player survived/eliminated time
-          uptime += player.end - lastDeacTime;
+          // add uptime from the final deac up to the player survived/eliminated time
+          // Note: if a player has no deacs, this line will crash when trying to process undefined.time
+          uptime += player.end - deacs[deacs.length - 1].time;
 
           await client.query(sql`
                 UPDATE scorecards
                 SET mvp_points=${mvp}, mvp_details=${JSON.stringify(
             mvpDetails
-          )}, uptime=${uptime}
+          )}, uptime=${uptime}, resupply_downtime=${resupplyDowntime}, other_downtime=${otherDowntime}
                 WHERE id = ${scorecard.id}
               `);
         }
