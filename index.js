@@ -1015,6 +1015,7 @@ exports.handler = async (event, context) => {
           for (const prop in mvpDetails) {
             mvp += mvpDetails[prop].value;
           }
+          mvp = Math.max(0, mvp);
 
           // unrelated to mvp - calculate uptime
           const player = entities.get(scorecard.ipl_id);
