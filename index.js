@@ -63,7 +63,9 @@ exports.handler = async (event, context) => {
               desc: record[2],
               start: parseInt(record[3]),
               starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
-              duration: (Math.round(record[4] / 1000) * 1000) / 1000,
+              duration: record[4]
+                ? (Math.round(record[4] / 1000) * 1000) / 1000
+                : 900,
               ...game
             };
             game.tdfKey = `${game.center}_${game.start}.tdf`;
@@ -432,7 +434,6 @@ exports.handler = async (event, context) => {
         `);
 
         //insert the actions
-        //for (const action of actions) {
         let chunkSize = 100;
         for (let i = 0, len = actions.length; i < len; i += chunkSize) {
           let chunk = actions.slice(i, i + chunkSize);
