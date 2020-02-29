@@ -1068,7 +1068,7 @@ exports.handler = async (event, context) => {
             // if the player was deactivated again before they came up (e.g. reset, nuke), then this will be 0
             const uptimeDuration = Math.max(deacTimeDiff - 8000, 0);
 
-            if ([resuppliedActionCodes].includes(deac.type)) {
+            if ([...resuppliedActionCodes].includes(deac.type)) {
               // this was a resupply deactivation
               resupplyDowntime += deacDuration;
             } else {
@@ -1081,8 +1081,9 @@ exports.handler = async (event, context) => {
           });
 
           // add uptime from the final deac up to the player survived/eliminated time
-          // Note: if a player has no deacs, this line will crash when trying to process undefined.time
-          uptime += player.end - deacs[deacs.length - 1].time;
+          let lastDeac = deacs[deacs.length - 1];
+          uptime +=
+            player.end - (lastDeac && lastDeac.time ? lastDeac.time : 0);
 
           await client.query(sql`
                 UPDATE scorecards
