@@ -949,7 +949,7 @@ exports.handler = async (event, context) => {
           if (scorecard.nukes_activated - scorecard.nukes_detonated > 0) {
             let team = "red" == scorecard.team ? "green" : "red";
 
-            let nukes = await client.any(sql`
+            let nukes = await client.one(sql`
                   SELECT SUM(nukes_canceled) as all_nukes_canceled
                   FROM scorecards
                   WHERE game_id = ${newGame.id} AND team = ${team}
