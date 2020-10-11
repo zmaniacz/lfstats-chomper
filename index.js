@@ -57,7 +57,7 @@ exports.handler = async (event, context) => {
               center: record[3]
             };
           } else if (record[0] == 1) {
-            //;1/mission	type	desc	start duration
+            //;1/mission	type	desc	start duration penalty
             game = {
               type: record[1],
               desc: record[2],
@@ -66,6 +66,7 @@ exports.handler = async (event, context) => {
               duration: record[4]
                 ? (Math.round(record[4] / 1000) * 1000) / 1000
                 : 900,
+              penaltyValue: typeof record[5] != "undefined" ? record[5] : null,
               ...game
             };
             game.tdfKey = `${game.center}_${game.start}.tdf`;
@@ -744,43 +745,54 @@ exports.handler = async (event, context) => {
             }
             //4-fix penalties
             if (player.penalties > 0) {
-              let penalties = await client.many(sql`
-                    SELECT *
-                    FROM game_deltas
+              if (game.penaltyValue === null) {
+                // no defined penalty value, so all defaulted to 1k and need to back them out
+                let penalties = await client.many(sql`
+                  SELECT *
+                  FROM game_deltas
+                  WHERE game_id = ${newGame.id}
+                    AND
+                      player_id = ${player.lfstats_id}
+                    AND
+                      delta = -1000
+                  ORDER BY score_time ASC
+                `);
+                for (const penalty of penalties) {
+                  //log the penalty - just going to use the common defaults
+                  await client.query(sql`
+                    INSERT INTO penalties
+                      (scorecard_id)
+                    VALUES
+                      (${player.scorecard_id})
+                  `);
+                  //Now the tricky bit, have to rebuild the score deltas from the point the penalty occurred
+                  //update the delta event to remove the -1000
+                  await client.query(sql`
+                    UPDATE game_deltas 
+                    SET delta=0,new=new+1000 
+                    WHERE id=${penalty.id}
+                  `);
+                  //Now update a lot of rows, so scary
+                  await client.query(sql`
+                    UPDATE game_deltas 
+                    SET old=old+1000,new=new+1000 
                     WHERE game_id = ${newGame.id}
                       AND
                         player_id = ${player.lfstats_id}
                       AND
-                        delta = -1000
-                    ORDER BY score_time ASC
+                        score_time>${penalty.score_time}
                   `);
-
-              for (const penalty of penalties) {
-                //log the penalty - just going to use the common defaults
-                await client.query(sql`
-                      INSERT INTO penalties
-                        (scorecard_id)
-                      VALUES
-                        (${player.scorecard_id})
-                    `);
-
-                //Now the tricky bit, have to rebuild the score deltas from the point the penalty occurred
-                //update the delta event to remove the -1000
-                await client.query(sql`
-                      UPDATE game_deltas 
-                      SET delta=0,new=new+1000 
-                      WHERE id=${penalty.id}
-                    `);
-                //Now update a lot of rows, so scary
-                await client.query(sql`
-                      UPDATE game_deltas 
-                      SET old=old+1000,new=new+1000 
-                      WHERE game_id = ${newGame.id}
-                        AND
-                          player_id = ${player.lfstats_id}
-                        AND
-                          score_time>${penalty.score_time}
-                    `);
+                }
+              } else {
+                //we're in the new model and everything is better
+                for (i = 0; i < player.penalties; i++) {
+                  await client.query(sql`
+                    INSERT INTO penalties
+                      (value, scorecard_id)
+                    VALUES
+                      (${game.penaltyValue}, ${player.scorecard_id})
+                  `);
+                }
               }
             }
           }
