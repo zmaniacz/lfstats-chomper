@@ -242,10 +242,7 @@ exports.handler = async (event, context) => {
               missiledTeam: parseInt(record[24]),
               ...player
             };
-            //adjsut for penalties
-            if (player.penalties > 0) {
-              player.score += record[18] * 1000;
-            }
+
             entities.set(record[1], player);
             teams.get(player.team).livesLeft += player.livesLeft;
             teams.get(player.team).score += player.score;
@@ -764,6 +761,12 @@ exports.handler = async (event, context) => {
                       (scorecard_id)
                     VALUES
                       (${player.scorecard_id})
+                  `);
+                  //fix the player's score
+                  await client.query(sql`
+                    UPDATE scorecards
+                    SET score=score+1000
+                    WHERE id=${player.scorecard_id}
                   `);
                   //Now the tricky bit, have to rebuild the score deltas from the point the penalty occurred
                   //update the delta event to remove the -1000
