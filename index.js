@@ -12,21 +12,30 @@ const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 
 const pool = createPool(connectionString);
 
+const params = {
+  Bucket: '',
+  Key: ''
+};
+
+let eventId = '';
+
 exports.handler = async (event, context) => {
   console.log("BEGIN CHOMP");
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  const bucket = event.Records[0].s3.bucket.name;
-  const key = decodeURIComponent(
-    event.Records[0].s3.object.key.replace(/\+/g, " ")
-  );
-
-  const eventId = key.split("/")[0];
-
-  const params = {
-    Bucket: bucket,
-    Key: key
-  };
+  if(event.Records && event.Records[0].eventSource === "aws:sqs") {
+    console.log("Event is type SQS")
+    const messageBody = JSON.parse(event.Records[0].body);
+    console.log("Message Body: ", JSON.stringify(messageBody, null, 2));
+    params.Bucket = messageBody.Records[0].s3.bucket.name;
+    params.Key = decodeURIComponent(
+      messageBody.Records[0].s3.object.key.replace(/\+/g, " ")
+    );
+  
+    eventId = params.Key.split("/")[0];
+  } else {
+    console.log("Event is type API")
+  }
 
   const jobId = context.awsRequestId;
 
@@ -262,7 +271,7 @@ exports.handler = async (event, context) => {
   await pool.connect(async connection => {
     await connection.query(sql`
       INSERT INTO game_imports (id, filename, status)
-      VALUES (${jobId}, ${key}, ${"starting chomp..."})
+      VALUES (${jobId}, ${params.Key}, ${"starting chomp..."})
     `);
 
     try {
@@ -278,7 +287,7 @@ exports.handler = async (event, context) => {
       await chompFile(rl);
 
       const storageParams = {
-        CopySource: bucket + "/" + key,
+        CopySource: params.Bucket + "/" + params.Key,
         Bucket: targetBucket,
         Key: game.tdfKey
       };
@@ -788,7 +797,7 @@ exports.handler = async (event, context) => {
                 }
               } else {
                 //we're in the new model and everything is better
-                for (i = 0; i < player.penalties; i++) {
+                for (let i = 0; i < player.penalties; i++) {
                   await client.query(sql`
                     INSERT INTO penalties
                       (value, scorecard_id)
