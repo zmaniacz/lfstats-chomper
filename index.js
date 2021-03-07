@@ -13,28 +13,28 @@ const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 const pool = createPool(connectionString);
 
 const params = {
-  Bucket: '',
-  Key: ''
+  Bucket: "",
+  Key: ""
 };
 
-let eventId = '';
+let eventId = "";
 
 exports.handler = async (event, context) => {
   console.log("BEGIN CHOMP");
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  if(event.Records && event.Records[0].eventSource === "aws:sqs") {
-    console.log("Event is type SQS")
+  if (event.Records && event.Records[0].eventSource === "aws:sqs") {
+    console.log("Event is type SQS");
     const messageBody = JSON.parse(event.Records[0].body);
     console.log("Message Body: ", JSON.stringify(messageBody, null, 2));
     params.Bucket = messageBody.Records[0].s3.bucket.name;
     params.Key = decodeURIComponent(
       messageBody.Records[0].s3.object.key.replace(/\+/g, " ")
     );
-  
+
     eventId = params.Key.split("/")[0];
   } else {
-    console.log("Event is type API")
+    console.log("Event is type API");
   }
 
   const jobId = context.awsRequestId;
@@ -120,6 +120,12 @@ exports.handler = async (event, context) => {
               lfstats_id: null,
               resupplies: 0,
               bases_destroyed: 0,
+              rapidFires: [],
+              isRapidActive: false,
+              shotsFiredDuringRapid: 0,
+              shotsHitDuringRapid: 0,
+              shotOpponentDuringRapid: 0,
+              shotTeamDuringRapid: 0,
               hits: new Map()
             };
             entities.set(entity.ipl_id, entity);
@@ -149,6 +155,13 @@ exports.handler = async (event, context) => {
 
             actions.push(action);
 
+            //track rapid
+            if (record[2] == "0201") {
+              if (player.isRapidActive) {
+                player.shotsFiredDuringRapid += 1;
+              }
+            }
+
             //track and total hits
             if (
               record[2] == "0205" ||
@@ -165,8 +178,16 @@ exports.handler = async (event, context) => {
                 });
               }
 
-              if (record[2] == "0205" || record[2] == "0206")
+              if (record[2] == "0205" || record[2] == "0206") {
                 player.hits.get(target.ipl_id).hits += 1;
+                if (player.isRapidActive) {
+                  player.shotsFiredDuringRapid += 1;
+                  player.shotsHitDuringRapid += 1;
+                  if (player.team === target.team)
+                    player.shotTeamDuringRapid += 1;
+                  else player.shotOpponentDuringRapid += 1;
+                }
+              }
               if (record[2] == "0306")
                 player.hits.get(target.ipl_id).missiles += 1;
             }
@@ -181,14 +202,34 @@ exports.handler = async (event, context) => {
               game.gameLength = gameLength;
             }
 
+            //track rapid fire starts
+            if (record[2] == "0400") {
+              player.rapidFires.push({
+                rapidStart: parseInt(record[1]),
+                rapidEnd: null,
+                rapidLength: null
+              });
+              player.isRapidActive = true;
+            }
+
             //sum up total resupplies
             if (record[2] == "0500" || record[2] == "0502") {
-              entities.get(record[3]).resupplies += 1;
+              let target = entities.get(record[5]);
+              player.resupplies += 1;
+              //if rapid fire is active on the target, now it's over
+              target.isRapidActive = false;
+              if (target.rapidFires.length > 0) {
+                let rapidStatus =
+                  target.rapidFires[target.rapidFires.length - 1];
+                rapidStatus.rapidEnd = parseInt(record[1]);
+                rapidStatus.rapidLength =
+                  rapidStatus.rapidEnd - rapidStatus.rapidStart;
+              }
             }
 
             //sum up total bases destroyed
             if (record[2] == "0303" || record[2] == "0204") {
-              entities.get(record[3]).bases_destroyed += 1;
+              player.bases_destroyed += 1;
             }
           } else if (record[0] == 5) {
             let player = entities.get(record[2]);
@@ -215,6 +256,16 @@ exports.handler = async (event, context) => {
           } else if (record[0] == 7) {
             //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
             let player = entities.get(record[1]);
+
+            //clean up rapid
+            if (player.isRapidActive) {
+              player.isRapidActive = false;
+              let rapidStatus = player.rapidFires[player.rapidFires.length - 1];
+              rapidStatus.rapidEnd = player.end;
+              rapidStatus.rapidLength =
+                rapidStatus.rapidEnd - rapidStatus.rapidStart;
+            }
+
             player = {
               accuracy: parseInt(record[2]) / Math.max(parseInt(record[3]), 1),
               hit_diff: parseInt(record[21]) / Math.max(parseInt(record[4]), 1),
@@ -646,7 +697,12 @@ exports.handler = async (event, context) => {
                       player_id,
                       center_id,
                       event_id,
-                      team_id
+                      team_id,
+                      rapid_fire_history,
+                      shots_fired_during_rapid,
+                      shots_hit_during_rapid,
+                      shot_opponent_during_rapid,
+                      shot_team_during_rapid
                     )
                   VALUES
                     (
@@ -699,7 +755,12 @@ exports.handler = async (event, context) => {
                       ${player.lfstats_id},
                       ${event.center_id},
                       ${event.id},
-                      ${team.lfstats_id}
+                      ${team.lfstats_id},
+                      ${JSON.stringify(player.rapidFires)},
+                      ${player.shotsFiredDuringRapid},
+                      ${player.shotsHitDuringRapid},
+                      ${player.shotOpponentDuringRapid},
+                      ${player.shotTeamDuringRapid}
                     )
                     RETURNING *
                 `);
