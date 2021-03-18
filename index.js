@@ -1092,12 +1092,12 @@ exports.handler = async (event, context) => {
           mvpDetails.missiledTeam.value += scorecard.missiled_team * -3;
 
           //WINNER
-          //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
+          //at least 4 MVP for an elim, increased by 1/60 for each second of time remaining over 3 minutes
           if (scorecard.elim_other_team > 0)
             mvpDetails.elimBonus.value += Number.parseFloat(
-              Math.max(
-                1.0,
-                (newGame.duration - newGame.game_length) / 60
+              (
+                4.0 +
+                Math.max(0, (newGame.duration - newGame.game_length) / 60 - 3)
               ).toFixed(2)
             );
 
