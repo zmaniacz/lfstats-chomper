@@ -15,8 +15,5 @@
   "bugs": {
     "url": "https://github.com/zmaniacz/lfstats-chomper/issues"
   },
-  "homepage": "https://github.com/zmaniacz/lfstats-chomper#readme",
-  "devDependencies": {
-    "eslint": "^6.8.0"
-  }
+  "homepage": "https://github.com/zmaniacz/lfstats-chomper#readme"
 }
