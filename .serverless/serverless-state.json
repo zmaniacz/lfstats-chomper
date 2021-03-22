@@ -233,7 +233,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/lfstats-chomper/dev/1616396341103-2021-03-22T06:59:01.103Z/lfstats-chomper.zip"
+                "S3Key": "serverless/lfstats-chomper/dev/1616396565524-2021-03-22T07:02:45.524Z/lfstats-chomper.zip"
               },
               "Handler": "handler.hello",
               "Runtime": "nodejs14.x",
@@ -258,7 +258,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/lfstats-chomper/dev/1616396341103-2021-03-22T06:59:01.103Z/lfstats-chomper.zip"
+                "S3Key": "serverless/lfstats-chomper/dev/1616396565524-2021-03-22T07:02:45.524Z/lfstats-chomper.zip"
               },
               "Handler": "index.handler",
               "Runtime": "nodejs14.x",
@@ -428,7 +428,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/lfstats-chomper/dev/1616396341103-2021-03-22T06:59:01.103Z/custom-resources.zip"
+                "S3Key": "serverless/lfstats-chomper/dev/1616396565524-2021-03-22T07:02:45.524Z/custom-resources.zip"
               },
               "FunctionName": "lfstats-chomper-dev-custom-resource-existing-s3",
               "Handler": "s3/handler.handler",
@@ -758,7 +758,7 @@
     "artifact": "C:\\Users\\russe\\GitHub\\lfstats-chomper\\.serverless\\lfstats-chomper.zip"
   },
   "package": {
-    "artifactDirectoryName": "serverless/lfstats-chomper/dev/1616396341103-2021-03-22T06:59:01.103Z",
+    "artifactDirectoryName": "serverless/lfstats-chomper/dev/1616396565524-2021-03-22T07:02:45.524Z",
     "artifact": "lfstats-chomper.zip"
   }
 }
