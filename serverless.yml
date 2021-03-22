@@ -2,8 +2,6 @@ service: lfstats-chomper
 
 frameworkVersion: "2"
 
-useDotenv: true
-
 provider:
   name: aws
   iam:
@@ -11,28 +9,34 @@ provider:
       statements:
         - Effect: "Allow"
           Action:
+            - "secretsmanager:GetSecretValue"
+          Resource:
+            - "arn:aws:secretsmanager:us-east-1:474496752274:secret:prod/lfstats-MSO2km"
+        - Effect: "Allow"
+          Action:
             - "s3:ListBucket"
           Resource:
-            - "arn:aws:s3:::${env:SOURCE_BUCKET}"
+            - "arn:aws:s3:::lfstats-incoming"
         - Effect: "Allow"
           Action:
             - "s3:PutObject"
             - "s3:GetObject"
             - "s3:DeleteObject"
           Resource:
-            - "arn:aws:s3:::${env:SOURCE_BUCKET}/*"
+            - "arn:aws:s3:::lfstats-incoming/*"
         - Effect: "Allow"
           Action:
             - "s3:ListBucket"
           Resource:
-            - "arn:aws:s3:::${env:TARGET_BUCKET}"
+            - "arn:aws:s3:::lfstats-scorecard-archive"
         - Effect: "Allow"
           Action:
             - "s3:PutObject"
             - "s3:GetObject"
           Resource:
-            - "arn:aws:s3:::${env:TARGET_BUCKET}/*"
+            - "arn:aws:s3:::lfstats-scorecard-archive/*"
   runtime: nodejs14.x
+  timeout: 120
   lambdaHashingVersion: 20201221
   httpApi:
     cors: true
@@ -45,13 +49,12 @@ functions:
   chomper:
     handler: index.handler
     environment:
-      TARGET_BUCKET: ${env:TARGET_BUCKET}
-      DATABASE_URL: ${env:DATABASE_URL}
-      ROARR_LOG: ${env:ROARR_LOG}
-      SOURCE_BUCKET: ${env:SOURCE_BUCKET}
+      TARGET_BUCKET: lfstats-scorecard-archive
+      ROARR_LOG: true
+      SOURCE_BUCKET: lfstats-incoming
     events:
       - s3:
-          bucket: ${env:SOURCE_BUCKET}
+          bucket: lfstats-incoming
           event: s3:ObjectCreated:*
           rules:
             - suffix: .tdf

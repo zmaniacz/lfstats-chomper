@@ -143,6 +143,13 @@
                 {
                   "Effect": "Allow",
                   "Action": [
+                    "secretsmanager:GetSecretValue"
+                  ],
+                  "Resource": "arn:aws:secretsmanager:us-east-1:474496752274:secret:prod/lfstats-MSO2km"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
                     "s3:ListBucket"
                   ],
                   "Resource": "arn:aws:s3:::lfstats-incoming"
@@ -198,13 +205,13 @@
           "S3Bucket": {
             "Ref": "ServerlessDeploymentBucket"
           },
-          "S3Key": "serverless/lfstats-chomper/dev/1616396565524-2021-03-22T07:02:45.524Z/lfstats-chomper.zip"
+          "S3Key": "serverless/lfstats-chomper/dev/1616404015446-2021-03-22T09:06:55.446Z/lfstats-chomper.zip"
         },
         "Handler": "handler.hello",
         "Runtime": "nodejs14.x",
         "FunctionName": "lfstats-chomper-dev-hello",
         "MemorySize": 1024,
-        "Timeout": 6,
+        "Timeout": 120,
         "Role": {
           "Fn::GetAtt": [
             "IamRoleLambdaExecution",
@@ -223,17 +230,16 @@
           "S3Bucket": {
             "Ref": "ServerlessDeploymentBucket"
           },
-          "S3Key": "serverless/lfstats-chomper/dev/1616396565524-2021-03-22T07:02:45.524Z/lfstats-chomper.zip"
+          "S3Key": "serverless/lfstats-chomper/dev/1616404015446-2021-03-22T09:06:55.446Z/lfstats-chomper.zip"
         },
         "Handler": "index.handler",
         "Runtime": "nodejs14.x",
         "FunctionName": "lfstats-chomper-dev-chomper",
         "MemorySize": 1024,
-        "Timeout": 6,
+        "Timeout": 120,
         "Environment": {
           "Variables": {
             "TARGET_BUCKET": "lfstats-scorecard-archive",
-            "DATABASE_URL": "postgres://postgres:298kTohrQCE0@lfstats.cxzcanpvweox.us-east-1.rds.amazonaws.com:5432/lfstats",
             "ROARR_LOG": "true",
             "SOURCE_BUCKET": "lfstats-incoming"
           }
@@ -249,24 +255,24 @@
         "ChomperLogGroup"
       ]
     },
-    "HelloLambdaVersionH2k5vAvIsk0P8PMnTM31IjSUPNnzYyFK2pk2nHM": {
+    "HelloLambdaVersionrVcG2Sk3q28v6YCtUIywTRxwkbqUSuiWwmsaTXKA4YE": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "HelloLambdaFunction"
         },
-        "CodeSha256": "RaEJUhuBLa3W3D8reA4wFEDIv+14NFQw5YxKZyiQGw4="
+        "CodeSha256": "x2fgOoLTzXJtliZEfwtV3gGW0o8GwzBzCiBPvQbBwyI="
       }
     },
-    "ChomperLambdaVersionk7xzVwE4azZ0wCfHYTrGn8syxn0d2OBBLZ2oHTXV4": {
+    "ChomperLambdaVersionFreasFQiHwKnj1dkUNqd8TLsO5iNrzTfkqWmgrShs": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "ChomperLambdaFunction"
         },
-        "CodeSha256": "RaEJUhuBLa3W3D8reA4wFEDIv+14NFQw5YxKZyiQGw4="
+        "CodeSha256": "x2fgOoLTzXJtliZEfwtV3gGW0o8GwzBzCiBPvQbBwyI="
       }
     },
     "ChomperCustomS31": {
@@ -393,7 +399,7 @@
           "S3Bucket": {
             "Ref": "ServerlessDeploymentBucket"
           },
-          "S3Key": "serverless/lfstats-chomper/dev/1616396565524-2021-03-22T07:02:45.524Z/custom-resources.zip"
+          "S3Key": "serverless/lfstats-chomper/dev/1616404015446-2021-03-22T09:06:55.446Z/custom-resources.zip"
         },
         "FunctionName": "lfstats-chomper-dev-custom-resource-existing-s3",
         "Handler": "s3/handler.handler",
@@ -499,7 +505,7 @@
           ]
         },
         "PayloadFormatVersion": "2.0",
-        "TimeoutInMillis": 6500
+        "TimeoutInMillis": 29000
       }
     },
     "HttpApiRouteGetHello": {
@@ -533,13 +539,13 @@
     "HelloLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "HelloLambdaVersionH2k5vAvIsk0P8PMnTM31IjSUPNnzYyFK2pk2nHM"
+        "Ref": "HelloLambdaVersionrVcG2Sk3q28v6YCtUIywTRxwkbqUSuiWwmsaTXKA4YE"
       }
     },
     "ChomperLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "ChomperLambdaVersionk7xzVwE4azZ0wCfHYTrGn8syxn0d2OBBLZ2oHTXV4"
+        "Ref": "ChomperLambdaVersionFreasFQiHwKnj1dkUNqd8TLsO5iNrzTfkqWmgrShs"
       }
     },
     "HttpApiId": {

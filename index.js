@@ -5,21 +5,37 @@ const iconv = require("iconv-lite");
 const AutoDetectDecoderStream = require("autodetect-decoder-stream");
 const { createPool, sql } = require("slonik");
 
-const targetBucket = process.env.TARGET_BUCKET;
-const connectionString = process.env.DATABASE_URL;
-
 const s3 = new aws.S3({ apiVersion: "2006-03-01" });
+const secretsmanager = new aws.SecretsManager({ apiVersion: "2017-10-17" });
 
-const pool = createPool(connectionString);
+const targetBucket = process.env.TARGET_BUCKET;
+let connectionString = "";
 
-const params = {
-  Bucket: "",
-  Key: "",
-};
-
-let eventId = "";
+function getDBCreds() {
+  return secretsmanager
+    .getSecretValue({
+      SecretId:
+        "arn:aws:secretsmanager:us-east-1:474496752274:secret:prod/lfstats-MSO2km",
+    })
+    .promise();
+}
 
 exports.handler = async (event, context) => {
+  console.log("FIND SECRET");
+  try {
+    const data = await getDBCreds();
+    let secret = JSON.parse(data.SecretString);
+    connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/${secret.dbInstanceIdentifier}`;
+  } catch (err) {
+    console.log("SECRET ERROR", err.stack);
+  }
+
+  const params = {
+    Bucket: "",
+    Key: "",
+  };
+
+  let eventId = "";
   console.log("BEGIN CHOMP");
   console.log("Received event:", JSON.stringify(event, null, 2));
 
@@ -318,6 +334,7 @@ exports.handler = async (event, context) => {
     });
   }
 
+  const pool = createPool(connectionString);
   await pool.connect(async (connection) => {
     await connection.query(sql`
       INSERT INTO game_imports (id, filename, status)
