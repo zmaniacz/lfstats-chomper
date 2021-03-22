@@ -51,7 +51,7 @@ functions:
       SOURCE_BUCKET: ${env:SOURCE_BUCKET}
     events:
       - s3:
-          bucket: lfstats-incoming
+          bucket: ${env:SOURCE_BUCKET}
           event: s3:ObjectCreated:*
           rules:
             - suffix: .tdf
