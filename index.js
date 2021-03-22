@@ -14,7 +14,7 @@ const pool = createPool(connectionString);
 
 const params = {
   Bucket: "",
-  Key: ""
+  Key: "",
 };
 
 let eventId = "";
@@ -23,14 +23,12 @@ exports.handler = async (event, context) => {
   console.log("BEGIN CHOMP");
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  if (event.Records && event.Records[0].eventSource === "aws:sqs") {
-    console.log("Event is type SQS");
-    const messageBody = JSON.parse(event.Records[0].body);
+  if (event.Records && event.Records[0].eventSource === "aws:s3") {
+    console.log("Event is type S3");
+    const messageBody = event.Records[0].s3;
     console.log("Message Body: ", JSON.stringify(messageBody, null, 2));
-    params.Bucket = messageBody.Records[0].s3.bucket.name;
-    params.Key = decodeURIComponent(
-      messageBody.Records[0].s3.object.key.replace(/\+/g, " ")
-    );
+    params.Bucket = messageBody.bucket.name;
+    params.Key = decodeURIComponent(messageBody.object.key.replace(/\+/g, " "));
 
     eventId = params.Key.split("/")[0];
   } else {
@@ -50,12 +48,12 @@ exports.handler = async (event, context) => {
     2: "Heavy Weapons",
     3: "Scout",
     4: "Ammo Carrier",
-    5: "Medic"
+    5: "Medic",
   };
 
   async function chompFile(rl) {
-    return new Promise(resolve => {
-      rl.on("line", line => {
+    return new Promise((resolve) => {
+      rl.on("line", (line) => {
         let record = line.split("\t");
         if (record[0].includes(';"')) {
           return;
@@ -63,7 +61,7 @@ exports.handler = async (event, context) => {
           if (record[0] == 0) {
             //;0/info	file-version	program-version	centre
             game = {
-              center: record[3]
+              center: record[3],
             };
           } else if (record[0] == 1) {
             //;1/mission	type	desc	start duration penalty
@@ -76,7 +74,7 @@ exports.handler = async (event, context) => {
                 ? (Math.round(record[4] / 1000) * 1000) / 1000
                 : 900,
               penaltyValue: typeof record[5] != "undefined" ? record[5] : null,
-              ...game
+              ...game,
             };
             game.tdfKey = `${game.center}_${game.start}.tdf`;
           } else if (record[0] == 2) {
@@ -103,7 +101,7 @@ exports.handler = async (event, context) => {
               score: 0,
               livesLeft: 0,
               normal_team: normal_team,
-              lfstats_id: null
+              lfstats_id: null,
             };
             teams.set(team.index, team);
           } else if (record[0] == 3) {
@@ -126,7 +124,7 @@ exports.handler = async (event, context) => {
               shotsHitDuringRapid: 0,
               shotOpponentDuringRapid: 0,
               shotTeamDuringRapid: 0,
-              hits: new Map()
+              hits: new Map(),
             };
             entities.set(entity.ipl_id, entity);
           } else if (record[0] == 4) {
@@ -137,7 +135,7 @@ exports.handler = async (event, context) => {
               player: null,
               action: null,
               target: null,
-              team: null
+              team: null,
             };
 
             let player = null;
@@ -166,7 +164,8 @@ exports.handler = async (event, context) => {
             if (
               record[2] == "0205" ||
               record[2] == "0206" ||
-              record[2] == "0306"
+              record[2] == "0306" ||
+              record[2] == "0308"
             ) {
               let target = entities.get(record[5]);
 
@@ -174,7 +173,7 @@ exports.handler = async (event, context) => {
                 player.hits.set(target.ipl_id, {
                   ipl_id: target.ipl_id,
                   hits: 0,
-                  missiles: 0
+                  missiles: 0,
                 });
               }
 
@@ -188,7 +187,7 @@ exports.handler = async (event, context) => {
                   else player.shotOpponentDuringRapid += 1;
                 }
               }
-              if (record[2] == "0306")
+              if (record[2] == "0306" || record[2] == "0308")
                 player.hits.get(target.ipl_id).missiles += 1;
             }
 
@@ -207,7 +206,7 @@ exports.handler = async (event, context) => {
               player.rapidFires.push({
                 rapidStart: parseInt(record[1]),
                 rapidEnd: null,
-                rapidLength: null
+                rapidLength: null,
               });
               player.isRapidActive = true;
             }
@@ -240,7 +239,7 @@ exports.handler = async (event, context) => {
               team: player.team,
               old: record[3],
               delta: record[4],
-              new: record[5]
+              new: record[5],
             });
           } else if (record[0] == 6) {
             //;6/entity-end	time	id	type	score
@@ -250,7 +249,7 @@ exports.handler = async (event, context) => {
               score: parseInt(record[4]),
               survived:
                 (Math.round((record[1] - player.start) / 1000) * 1000) / 1000,
-              ...player
+              ...player,
             };
             entities.set(player.ipl_id, player);
           } else if (record[0] == 7) {
@@ -300,7 +299,7 @@ exports.handler = async (event, context) => {
               shotTeam: parseInt(record[22]),
               missiledOpponent: parseInt(record[23]),
               missiledTeam: parseInt(record[24]),
-              ...player
+              ...player,
             };
 
             entities.set(record[1], player);
@@ -319,7 +318,7 @@ exports.handler = async (event, context) => {
     });
   }
 
-  await pool.connect(async connection => {
+  await pool.connect(async (connection) => {
     await connection.query(sql`
       INSERT INTO game_imports (id, filename, status)
       VALUES (${jobId}, ${params.Key}, ${"starting chomp..."})
@@ -332,7 +331,7 @@ exports.handler = async (event, context) => {
           .createReadStream()
           .pipe(new AutoDetectDecoderStream())
           .pipe(iconv.encodeStream("utf8")),
-        terminal: false
+        terminal: false,
       });
 
       await chompFile(rl);
@@ -340,20 +339,20 @@ exports.handler = async (event, context) => {
       const storageParams = {
         CopySource: params.Bucket + "/" + params.Key,
         Bucket: targetBucket,
-        Key: game.tdfKey
+        Key: game.tdfKey,
       };
 
       await s3
         .copyObject(storageParams)
         .promise()
-        .then(data => console.log("MOVED TDF TO ARCHIVE", data))
-        .catch(err => console.log(err, err.stack));
+        .then((data) => console.log("MOVED TDF TO ARCHIVE", data))
+        .catch((err) => console.log(err, err.stack));
 
       await s3
         .deleteObject(params)
         .promise()
-        .then(data => console.log("REMOVED TDF", data))
-        .catch(err => console.log(err, err.stack));
+        .then((data) => console.log("REMOVED TDF", data))
+        .catch((err) => console.log(err, err.stack));
 
       //IMPORT PROCESS
       await connection.query(sql`
@@ -392,7 +391,7 @@ exports.handler = async (event, context) => {
         WHERE id = ${jobId}
       `);
 
-      let playerRecords = await connection.transaction(async client => {
+      let playerRecords = await connection.transaction(async (client) => {
         //find or create lfstats player IDs
         //baller screaver optimization
         return await client.query(sql`
@@ -400,9 +399,9 @@ exports.handler = async (event, context) => {
           VALUES (
             ${sql.join(
               [...entities]
-                .filter(p => p[1].type === "player")
+                .filter((p) => p[1].type === "player")
                 .sort()
-                .map(p => sql.join([p[1].desc, p[1].ipl_id], sql`, `)),
+                .map((p) => sql.join([p[1].desc, p[1].ipl_id], sql`, `)),
               sql`), (`
             )}
           )
@@ -417,7 +416,7 @@ exports.handler = async (event, context) => {
       }
 
       //upsert aliases
-      await connection.transaction(async client => {
+      await connection.transaction(async (client) => {
         return await client.query(sql`
           INSERT INTO players_names (player_id,player_name,is_active) 
           VALUES 
@@ -425,10 +424,10 @@ exports.handler = async (event, context) => {
             ${sql.join(
               [...entities]
                 .filter(
-                  p => p[1].type === "player" && p[1].ipl_id.startsWith("#")
+                  (p) => p[1].type === "player" && p[1].ipl_id.startsWith("#")
                 )
                 .sort()
-                .map(p =>
+                .map((p) =>
                   sql.join([p[1].lfstats_id, p[1].desc, true], sql`, `)
                 ),
               sql`), (`
@@ -438,7 +437,7 @@ exports.handler = async (event, context) => {
         `);
       });
 
-      await connection.transaction(async client => {
+      await connection.transaction(async (client) => {
         //start working on game details pre-insert
         //need to normalize team colors and determine elims before inserting the game
         let redTeam;
@@ -500,7 +499,7 @@ exports.handler = async (event, context) => {
               (action_time, action_type, action_text, player, target, team_index, game_id) 
             VALUES (
               ${sql.join(
-                chunk.map(action =>
+                chunk.map((action) =>
                   sql.join(
                     [
                       action.time,
@@ -509,7 +508,7 @@ exports.handler = async (event, context) => {
                       action.player,
                       action.target,
                       action.team,
-                      newGame.id
+                      newGame.id,
                     ],
                     sql`, `
                   )
@@ -528,7 +527,7 @@ exports.handler = async (event, context) => {
               (score_time, old, delta, new, ipl_id, player_id, team_index, game_id) 
             VALUES (
               ${sql.join(
-                chunk.map(delta =>
+                chunk.map((delta) =>
                   sql.join(
                     [
                       delta.time,
@@ -538,7 +537,7 @@ exports.handler = async (event, context) => {
                       delta.player,
                       null,
                       delta.team,
-                      newGame.id
+                      newGame.id,
                     ],
                     sql`, `
                   )
@@ -557,8 +556,8 @@ exports.handler = async (event, context) => {
           (
             ${sql.join(
               [...entities]
-                .filter(r => r[1].type != "player")
-                .map(r =>
+                .filter((r) => r[1].type != "player")
+                .map((r) =>
                   sql.join(
                     [
                       r[1].ipl_id,
@@ -567,7 +566,7 @@ exports.handler = async (event, context) => {
                       r[1].team,
                       r[1].level,
                       r[1].category,
-                      newGame.id
+                      newGame.id,
                     ],
                     sql`, `
                   )
@@ -583,7 +582,7 @@ exports.handler = async (event, context) => {
           VALUES 
           (
             ${sql.join(
-              [...teams].map(t =>
+              [...teams].map((t) =>
                 sql.join(
                   [
                     t[1].index,
@@ -591,7 +590,7 @@ exports.handler = async (event, context) => {
                     t[1].color_enum,
                     t[1].color_desc,
                     t[1].normal_team,
-                    newGame.id
+                    newGame.id,
                   ],
                   sql`, `
                 )
@@ -891,31 +890,31 @@ exports.handler = async (event, context) => {
           let mvpDetails = {
             positionBonus: {
               name: "Position Score Bonus",
-              value: 0
+              value: 0,
             },
             missiledOpponent: {
               name: "Missiled Opponent",
-              value: 0
+              value: 0,
             },
             acc: {
               name: "Accuracy",
-              value: 0
+              value: 0,
             },
             nukesDetonated: {
               name: "Nukes Detonated",
-              value: 0
+              value: 0,
             },
             nukesCanceled: {
               name: "Nukes Canceled",
-              value: 0
+              value: 0,
             },
             medicHits: {
               name: "Medic Hits",
-              value: 0
+              value: 0,
             },
             ownMedicHits: {
               name: "Own Medic Hits",
-              value: 0
+              value: 0,
             },
             /*rapidFire: {
               name: "Activate Rapid Fire",
@@ -923,52 +922,52 @@ exports.handler = async (event, context) => {
             },*/
             shoot3Hit: {
               name: "Shoot 3-Hit",
-              value: 0
+              value: 0,
             },
             ammoBoost: {
               name: "Ammo Boost",
-              value: 0
+              value: 0,
             },
             lifeBoost: {
               name: "Life Boost",
-              value: 0
+              value: 0,
             },
             medicSurviveBonus: {
               name: "Medic Survival Bonus",
-              value: 0
+              value: 0,
             },
             medicScoreBonus: {
               name: "Medic Score Bonus",
-              value: 0
+              value: 0,
             },
             elimBonus: {
               name: "Elimination Bonus",
-              value: 0
+              value: 0,
             },
             timesMissiled: {
               name: "Times Missiled",
-              value: 0
+              value: 0,
             },
             missiledTeam: {
               name: "Missiled Team",
-              value: 0
+              value: 0,
             },
             ownNukesCanceled: {
               name: "Your Nukes Canceled",
-              value: 0
+              value: 0,
             },
             teamNukesCanceled: {
               name: "Team Nukes Canceled",
-              value: 0
+              value: 0,
             },
             elimPenalty: {
               name: "Elimination Penalty",
-              value: 0
+              value: 0,
             },
             penalties: {
               name: "Penalties",
-              value: 0
-            }
+              value: 0,
+            },
           };
 
           //POSITION BASED SCORE BONUS OMFG GIT GUD
@@ -1120,7 +1119,7 @@ exports.handler = async (event, context) => {
 
           const deacs = actions
             .filter(
-              action =>
+              (action) =>
                 action.time < player.end &&
                 // enemy nuke detonated
                 ((action.team !== player.team && action.type === "0405") ||
@@ -1128,7 +1127,7 @@ exports.handler = async (event, context) => {
                     // resupplied (x2), shot, missiled or penalised
                     [
                       ...resuppliedActionCodes,
-                      ...deactivatedActionCodes
+                      ...deactivatedActionCodes,
                     ].includes(action.type)))
             )
             .sort((a, b) => a.time - b.time);
@@ -1190,7 +1189,7 @@ exports.handler = async (event, context) => {
       `);
     } catch (err) {
       console.log("CHOMP ERROR", err.stack);
-      await pool.connect(async connection => {
+      await pool.connect(async (connection) => {
         await connection.query(sql`
         UPDATE game_imports
         SET status = ${"failed"},job_end=now()

@@ -15,5 +15,12 @@
   "bugs": {
     "url": "https://github.com/zmaniacz/lfstats-chomper/issues"
   },
-  "homepage": "https://github.com/zmaniacz/lfstats-chomper#readme"
+  "homepage": "https://github.com/zmaniacz/lfstats-chomper#readme",
+  "dependencies": {
+    "autodetect-decoder-stream": "^1.0.3",
+    "aws-sdk": "^2.868.0",
+    "iconv-lite": "^0.6.2",
+    "moment": "^2.29.1",
+    "slonik": "^23.6.2"
+  }
 }

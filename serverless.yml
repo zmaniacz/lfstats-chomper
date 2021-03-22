@@ -1,0 +1,58 @@
+service: lfstats-chomper
+
+frameworkVersion: "2"
+
+useDotenv: true
+
+provider:
+  name: aws
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - "s3:ListBucket"
+          Resource:
+            - "arn:aws:s3:::${env:SOURCE_BUCKET}"
+        - Effect: "Allow"
+          Action:
+            - "s3:PutObject"
+            - "s3:GetObject"
+            - "s3:DeleteObject"
+          Resource:
+            - "arn:aws:s3:::${env:SOURCE_BUCKET}/*"
+        - Effect: "Allow"
+          Action:
+            - "s3:ListBucket"
+          Resource:
+            - "arn:aws:s3:::${env:TARGET_BUCKET}"
+        - Effect: "Allow"
+          Action:
+            - "s3:PutObject"
+            - "s3:GetObject"
+          Resource:
+            - "arn:aws:s3:::${env:TARGET_BUCKET}/*"
+  runtime: nodejs14.x
+  lambdaHashingVersion: 20201221
+  httpApi:
+    cors: true
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - httpApi: "GET /hello"
+  chomper:
+    handler: index.handler
+    environment:
+      TARGET_BUCKET: ${env:TARGET_BUCKET}
+      DATABASE_URL: ${env:DATABASE_URL}
+      ROARR_LOG: ${env:ROARR_LOG}
+      SOURCE_BUCKET: ${env:SOURCE_BUCKET}
+    events:
+      - s3:
+          bucket: lfstats-incoming
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .tdf
+          existing: true
