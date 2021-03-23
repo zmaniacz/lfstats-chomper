@@ -7,6 +7,7 @@ const { createPool, sql } = require("slonik");
 
 const s3 = new aws.S3({ apiVersion: "2006-03-01" });
 const secretsmanager = new aws.SecretsManager({ apiVersion: "2017-10-17" });
+const chomperVersion = "1.0";
 
 const targetBucket = process.env.TARGET_BUCKET;
 let connectionString = "";
@@ -25,7 +26,8 @@ exports.handler = async (event, context) => {
   try {
     const data = await getDBCreds();
     let secret = JSON.parse(data.SecretString);
-    connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/${secret.dbInstanceIdentifier}`;
+    connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats`;
+    tdfConnectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf`;
   } catch (err) {
     console.log("SECRET ERROR", err.stack);
   }
@@ -76,29 +78,39 @@ exports.handler = async (event, context) => {
         } else {
           if (record[0] == 0) {
             //;0/info	file-version	program-version	centre
+            let location = record[3].split("-");
             game = {
               center: record[3],
+              metadata: {
+                fileVersion: record[1],
+                programVersion: record[2],
+                regionCode: location[0],
+                siteCode: location[1],
+                chomperVersion: chomperVersion,
+              },
             };
           } else if (record[0] == 1) {
             //;1/mission	type	desc	start duration penalty
             game = {
-              type: record[1],
-              desc: record[2],
-              start: parseInt(record[3]),
-              starttime: moment(record[3], "YYYYMMDDHHmmss").format(),
-              duration: record[4]
+              missionType: record[1],
+              missionDesc: record[2],
+              missionStart: parseInt(record[3]),
+              missionStartTime: moment(record[3], "YYYYMMDDHHmmss").format(),
+              missionDuration: record[4]
                 ? (Math.round(record[4] / 1000) * 1000) / 1000
                 : 900,
+              missionDurationMillis:
+                typeof record[4] != "undefined" ? parseInt(record[4]) : 900000,
               penaltyValue: typeof record[5] != "undefined" ? record[5] : null,
               ...game,
             };
-            game.tdfKey = `${game.center}_${game.start}.tdf`;
+            game.tdfKey = `${game.center}_${game.missionStart}.tdf`;
           } else if (record[0] == 2) {
             //;2/team	index	desc	colour-enum	colour-desc
             //normalize the team colors to either red or green because reasons
-            let normal_team = "";
+            let normalTeam = "";
             if (record[4] == "Fire" || record[4] == "Red") {
-              normal_team = "red";
+              normalTeam = "red";
             } else if (
               record[4] == "Ice" ||
               record[4] == "Yellow" ||
@@ -106,18 +118,18 @@ exports.handler = async (event, context) => {
               record[4] == "Green" ||
               record[4] == "Earth"
             ) {
-              normal_team = "green";
+              normalTeam = "green";
             }
 
             let team = {
               index: record[1],
               desc: record[2],
-              color_enum: record[3],
-              color_desc: record[4],
+              colorEnum: record[3],
+              colorDesc: record[4],
               score: 0,
               livesLeft: 0,
-              normal_team: normal_team,
-              lfstats_id: null,
+              normalTeam: normalTeam,
+              lfstatsId: null,
             };
             teams.set(team.index, team);
           } else if (record[0] == 3) {
@@ -131,7 +143,7 @@ exports.handler = async (event, context) => {
               level: parseInt(record[6]),
               category: record[7],
               position: ENTITY_TYPES[record[7]],
-              lfstats_id: null,
+              lfstatsId: null,
               resupplies: 0,
               bases_destroyed: 0,
               rapidFires: [],
@@ -211,7 +223,7 @@ exports.handler = async (event, context) => {
             if (record[2] == "0101") {
               let gameLength;
               gameLength = (Math.round(record[1] / 1000) * 1000) / 1000;
-              game.endtime = moment(game.start, "YYYYMMDDHHmmss")
+              game.endtime = moment(game.missionStart, "YYYYMMDDHHmmss")
                 .seconds(gameLength)
                 .format();
               game.gameLength = gameLength;
@@ -383,7 +395,7 @@ exports.handler = async (event, context) => {
         sql`SELECT games.id 
             FROM games 
             INNER JOIN centers ON games.center_id=centers.id 
-            WHERE game_datetime=${game.starttime} AND centers.ipl_id=${game.center}`
+            WHERE game_datetime=${game.missionStartTime} AND centers.ipl_id=${game.center}`
       );
 
       if (gameExist != null) {
@@ -429,7 +441,7 @@ exports.handler = async (event, context) => {
 
       //update our entities with their lfstats IDs for future reference
       for (let player of playerRecords.rows) {
-        entities.get(player.ipl_id).lfstats_id = player.id;
+        entities.get(player.ipl_id).lfstatsId = player.id;
       }
 
       //upsert aliases
@@ -445,7 +457,7 @@ exports.handler = async (event, context) => {
                 )
                 .sort()
                 .map((p) =>
-                  sql.join([p[1].lfstats_id, p[1].desc, true], sql`, `)
+                  sql.join([p[1].lfstatsId, p[1].desc, true], sql`, `)
                 ),
               sql`), (`
             )} 
@@ -461,8 +473,8 @@ exports.handler = async (event, context) => {
         let greenTeam;
         // eslint-disable-next-line no-unused-vars
         for (const [key, value] of teams) {
-          if (value.normal_team == "red") redTeam = value;
-          if (value.normal_team == "green") greenTeam = value;
+          if (value.normalTeam == "red") redTeam = value;
+          if (value.normalTeam == "green") greenTeam = value;
         }
 
         //Assign elim bonuses
@@ -489,13 +501,13 @@ exports.handler = async (event, context) => {
           else winner = "green";
         } else if (redElim) winner = "green";
         else if (greenElim) winner = "red";
-        game.name = `Game @ ${moment(game.starttime).format("HH:mm")}`;
+        game.name = `Game @ ${moment(game.missionStartTime).format("HH:mm")}`;
 
         let gameRecord = await client.query(sql`
           INSERT INTO games 
             (game_name,game_description,game_datetime,game_length,duration,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id,tdf_key)
           VALUES
-            (${game.name},'',${game.starttime},${game.gameLength},${game.duration},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id},${game.tdfKey})
+            (${game.name},'',${game.missionStartTime},${game.gameLength},${game.missionDuration},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id},${game.tdfKey})
           RETURNING *
         `);
         let newGame = gameRecord.rows[0];
@@ -604,9 +616,9 @@ exports.handler = async (event, context) => {
                   [
                     t[1].index,
                     t[1].desc,
-                    t[1].color_enum,
-                    t[1].color_desc,
-                    t[1].normal_team,
+                    t[1].colorEnum,
+                    t[1].colorDesc,
+                    t[1].normalTeam,
                     newGame.id,
                   ],
                   sql`, `
@@ -619,7 +631,7 @@ exports.handler = async (event, context) => {
         `);
 
         for (let team of teamRecords.rows) {
-          teams.get(`${team.index}`).lfstats_id = team.id;
+          teams.get(`${team.index}`).lfstatsId = team.id;
           await client.query(sql`
             UPDATE game_actions
             SET team_id = ${team.id}
@@ -651,13 +663,13 @@ exports.handler = async (event, context) => {
             let team_elim = 0;
             let elim_other_team = 0;
             if (
-              (redElim && team.normal_team == "red") ||
-              (greenElim && team.normal_team == "green")
+              (redElim && team.normalTeam == "red") ||
+              (greenElim && team.normalTeam == "green")
             )
               team_elim = 1;
             if (
-              (redElim && team.normal_team == "green") ||
-              (greenElim && team.normal_team == "red")
+              (redElim && team.normalTeam == "green") ||
+              (greenElim && team.normalTeam == "red")
             )
               elim_other_team = 1;
 
@@ -723,8 +735,8 @@ exports.handler = async (event, context) => {
                   VALUES
                     (
                       ${player.desc},
-                      ${game.starttime},
-                      ${team.normal_team},
+                      ${game.missionStartTime},
+                      ${team.normalTeam},
                       ${player.position},
                       ${player.survived},
                       ${null},
@@ -768,10 +780,10 @@ exports.handler = async (event, context) => {
                       ${player.sp_spent},
                       ${newGame.id},
                       ${event.type},
-                      ${player.lfstats_id},
+                      ${player.lfstatsId},
                       ${event.center_id},
                       ${event.id},
-                      ${team.lfstats_id},
+                      ${team.lfstatsId},
                       ${JSON.stringify(player.rapidFires)},
                       ${player.shotsFiredDuringRapid},
                       ${player.shotsHitDuringRapid},
@@ -791,14 +803,14 @@ exports.handler = async (event, context) => {
             //1-Tie an internal lfstats id to players and targets in each action
             await client.query(sql`
                   UPDATE game_actions
-                  SET player_id = ${player.lfstats_id}
+                  SET player_id = ${player.lfstatsId}
                   WHERE player = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
                 `);
             await client.query(sql`
                   UPDATE game_actions
-                  SET target_id = ${player.lfstats_id}
+                  SET target_id = ${player.lfstatsId}
                   WHERE target = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
@@ -806,7 +818,7 @@ exports.handler = async (event, context) => {
             //2-Tie an internal lfstats id to each score delta
             await client.query(sql`
                   UPDATE game_deltas
-                  SET player_id = ${player.lfstats_id}
+                  SET player_id = ${player.lfstatsId}
                   WHERE ipl_id = ${player.ipl_id}
                     AND
                         game_id = ${newGame.id}
@@ -815,15 +827,13 @@ exports.handler = async (event, context) => {
             // eslint-disable-next-line no-unused-vars
             for (let [key, target] of player.hits) {
               if (entities.has(target.ipl_id)) {
-                target.target_lfstats_id = entities.get(
-                  target.ipl_id
-                ).lfstats_id;
+                target.target_lfstatsId = entities.get(target.ipl_id).lfstatsId;
               }
               await client.query(sql`
                   INSERT INTO hits
                     (player_id, target_id, hits, missiles, scorecard_id)
                   VALUES
-                    (${player.lfstats_id}, ${target.target_lfstats_id}, ${target.hits}, ${target.missiles}, ${player.scorecard_id})
+                    (${player.lfstatsId}, ${target.target_lfstatsId}, ${target.hits}, ${target.missiles}, ${player.scorecard_id})
                 `);
             }
             //4-fix penalties
@@ -835,7 +845,7 @@ exports.handler = async (event, context) => {
                   FROM game_deltas
                   WHERE game_id = ${newGame.id}
                     AND
-                      player_id = ${player.lfstats_id}
+                      player_id = ${player.lfstatsId}
                     AND
                       delta = -1000
                   ORDER BY score_time ASC
@@ -867,7 +877,7 @@ exports.handler = async (event, context) => {
                     SET old=old+1000,new=new+1000 
                     WHERE game_id = ${newGame.id}
                       AND
-                        player_id = ${player.lfstats_id}
+                        player_id = ${player.lfstatsId}
                       AND
                         score_time>${penalty.score_time}
                   `);
@@ -1113,7 +1123,7 @@ exports.handler = async (event, context) => {
             mvpDetails.elimBonus.value += Number.parseFloat(
               Math.max(
                 1.0,
-                (newGame.duration - newGame.game_length) / 60
+                (newGame.missionDuration - newGame.game_length) / 60
               ).toFixed(2)
             );
 
@@ -1132,7 +1142,7 @@ exports.handler = async (event, context) => {
 
           // the action codes for various deactivation events
           const resuppliedActionCodes = ["0500", "0502"];
-          const deactivatedActionCodes = ["0206", "0306", "0600"];
+          const deactivatedActionCodes = ["0206", "0306", "0308", "0600"];
 
           const deacs = actions
             .filter(
@@ -1215,4 +1225,27 @@ exports.handler = async (event, context) => {
       });
     }
   });
+  try {
+    const tdfPool = createPool(tdfConnectionString);
+    await tdfPool.connect(async (connection) => {
+      let centerExist = await connection.maybeOne(
+        sql`SELECT center.id, center.site_code, center.region_code
+            FROM center 
+            WHERE center.site_code=${game.metadata.siteCode} AND center.region_code=${game.metadata.regionCode}`
+      );
+      if (centerExist) {
+        return;
+      } else {
+        let centerRecord = await connection.query(sql`
+          INSERT INTO center 
+            (name,short_name,region_code,site_code)
+          VALUES
+            ('Unknown','unk',${game.metadata.regionCode},${game.metadata.siteCode})
+          RETURNING *
+        `);
+      }
+    });
+  } catch (err) {
+    console.log("CHOMP2 ERROR", err.stack);
+  }
 };

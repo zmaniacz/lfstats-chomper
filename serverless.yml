@@ -38,14 +38,14 @@ provider:
   runtime: nodejs14.x
   timeout: 120
   lambdaHashingVersion: 20201221
-  httpApi:
-    cors: true
+  #httpApi:
+  #  cors: true
 
 functions:
-  hello:
-    handler: handler.hello
-    events:
-      - httpApi: "GET /hello"
+  #hello:
+  #  handler: handler.hello
+  #  events:
+  #    - httpApi: "GET /hello"
   chomper:
     handler: index.handler
     environment:

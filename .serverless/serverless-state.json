@@ -53,9 +53,6 @@
       "runtime": "nodejs14.x",
       "timeout": 120,
       "lambdaHashingVersion": "20201221",
-      "httpApi": {
-        "cors": true
-      },
       "stage": "dev",
       "variableSyntax": "\\${([^{}:]+?(?:\\(|:)(?:[^:{}][^{}]*?)?)}",
       "region": "us-east-1",
@@ -131,12 +128,6 @@
                   }
                 ]
               }
-            }
-          },
-          "HelloLogGroup": {
-            "Type": "AWS::Logs::LogGroup",
-            "Properties": {
-              "LogGroupName": "/aws/lambda/lfstats-chomper-dev-hello"
             }
           },
           "ChomperLogGroup": {
@@ -237,31 +228,6 @@
               }
             }
           },
-          "HelloLambdaFunction": {
-            "Type": "AWS::Lambda::Function",
-            "Properties": {
-              "Code": {
-                "S3Bucket": {
-                  "Ref": "ServerlessDeploymentBucket"
-                },
-                "S3Key": "serverless/lfstats-chomper/dev/1616404015446-2021-03-22T09:06:55.446Z/lfstats-chomper.zip"
-              },
-              "Handler": "handler.hello",
-              "Runtime": "nodejs14.x",
-              "FunctionName": "lfstats-chomper-dev-hello",
-              "MemorySize": 1024,
-              "Timeout": 120,
-              "Role": {
-                "Fn::GetAtt": [
-                  "IamRoleLambdaExecution",
-                  "Arn"
-                ]
-              }
-            },
-            "DependsOn": [
-              "HelloLogGroup"
-            ]
-          },
           "ChomperLambdaFunction": {
             "Type": "AWS::Lambda::Function",
             "Properties": {
@@ -269,7 +235,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/lfstats-chomper/dev/1616404015446-2021-03-22T09:06:55.446Z/lfstats-chomper.zip"
+                "S3Key": "serverless/lfstats-chomper/dev/1616485026249-2021-03-23T07:37:06.249Z/lfstats-chomper.zip"
               },
               "Handler": "index.handler",
               "Runtime": "nodejs14.x",
@@ -294,24 +260,14 @@
               "ChomperLogGroup"
             ]
           },
-          "HelloLambdaVersionrVcG2Sk3q28v6YCtUIywTRxwkbqUSuiWwmsaTXKA4YE": {
-            "Type": "AWS::Lambda::Version",
-            "DeletionPolicy": "Retain",
-            "Properties": {
-              "FunctionName": {
-                "Ref": "HelloLambdaFunction"
-              },
-              "CodeSha256": "x2fgOoLTzXJtliZEfwtV3gGW0o8GwzBzCiBPvQbBwyI="
-            }
-          },
-          "ChomperLambdaVersionFreasFQiHwKnj1dkUNqd8TLsO5iNrzTfkqWmgrShs": {
+          "ChomperLambdaVersionSR2OcORevcbAf4DQjGqDbRryK2GQo8OsqkuQkh34": {
             "Type": "AWS::Lambda::Version",
             "DeletionPolicy": "Retain",
             "Properties": {
               "FunctionName": {
                 "Ref": "ChomperLambdaFunction"
               },
-              "CodeSha256": "x2fgOoLTzXJtliZEfwtV3gGW0o8GwzBzCiBPvQbBwyI="
+              "CodeSha256": "Sm3YX2UO5u2AJ2Sr/s4Oqiip7GCWCf3MKL6NWF16FSE="
             }
           },
           "ChomperCustomS31": {
@@ -438,7 +394,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/lfstats-chomper/dev/1616404015446-2021-03-22T09:06:55.446Z/custom-resources.zip"
+                "S3Key": "serverless/lfstats-chomper/dev/1616485026249-2021-03-23T07:37:06.249Z/custom-resources.zip"
               },
               "FunctionName": "lfstats-chomper-dev-custom-resource-existing-s3",
               "Handler": "s3/handler.handler",
@@ -455,115 +411,6 @@
             "DependsOn": [
               "IamRoleCustomResourcesLambdaExecution"
             ]
-          },
-          "HttpApi": {
-            "Type": "AWS::ApiGatewayV2::Api",
-            "Properties": {
-              "Name": "dev-lfstats-chomper",
-              "ProtocolType": "HTTP",
-              "CorsConfiguration": {
-                "AllowHeaders": [
-                  "Content-Type",
-                  "X-Amz-Date",
-                  "Authorization",
-                  "X-Api-Key",
-                  "X-Amz-Security-Token",
-                  "X-Amz-User-Agent"
-                ],
-                "AllowMethods": [
-                  "OPTIONS",
-                  "GET"
-                ],
-                "AllowOrigins": [
-                  "*"
-                ]
-              }
-            }
-          },
-          "HttpApiStage": {
-            "Type": "AWS::ApiGatewayV2::Stage",
-            "Properties": {
-              "ApiId": {
-                "Ref": "HttpApi"
-              },
-              "StageName": "$default",
-              "AutoDeploy": true,
-              "DefaultRouteSettings": {
-                "DetailedMetricsEnabled": false
-              }
-            }
-          },
-          "HelloLambdaPermissionHttpApi": {
-            "Type": "AWS::Lambda::Permission",
-            "Properties": {
-              "FunctionName": {
-                "Fn::GetAtt": [
-                  "HelloLambdaFunction",
-                  "Arn"
-                ]
-              },
-              "Action": "lambda:InvokeFunction",
-              "Principal": "apigateway.amazonaws.com",
-              "SourceArn": {
-                "Fn::Join": [
-                  "",
-                  [
-                    "arn:",
-                    {
-                      "Ref": "AWS::Partition"
-                    },
-                    ":execute-api:",
-                    {
-                      "Ref": "AWS::Region"
-                    },
-                    ":",
-                    {
-                      "Ref": "AWS::AccountId"
-                    },
-                    ":",
-                    {
-                      "Ref": "HttpApi"
-                    },
-                    "/*"
-                  ]
-                ]
-              }
-            }
-          },
-          "HttpApiIntegrationHello": {
-            "Type": "AWS::ApiGatewayV2::Integration",
-            "Properties": {
-              "ApiId": {
-                "Ref": "HttpApi"
-              },
-              "IntegrationType": "AWS_PROXY",
-              "IntegrationUri": {
-                "$ref": "$[\"service\"][\"provider\"][\"compiledCloudFormationTemplate\"][\"Resources\"][\"HelloLambdaPermissionHttpApi\"][\"Properties\"][\"FunctionName\"]"
-              },
-              "PayloadFormatVersion": "2.0",
-              "TimeoutInMillis": 29000
-            }
-          },
-          "HttpApiRouteGetHello": {
-            "Type": "AWS::ApiGatewayV2::Route",
-            "Properties": {
-              "ApiId": {
-                "Ref": "HttpApi"
-              },
-              "RouteKey": "GET /hello",
-              "Target": {
-                "Fn::Join": [
-                  "/",
-                  [
-                    "integrations",
-                    {
-                      "Ref": "HttpApiIntegrationHello"
-                    }
-                  ]
-                ]
-              }
-            },
-            "DependsOn": "HttpApiIntegrationHello"
           }
         },
         "Outputs": {
@@ -572,44 +419,10 @@
               "Ref": "ServerlessDeploymentBucket"
             }
           },
-          "HelloLambdaFunctionQualifiedArn": {
-            "Description": "Current Lambda function version",
-            "Value": {
-              "Ref": "HelloLambdaVersionrVcG2Sk3q28v6YCtUIywTRxwkbqUSuiWwmsaTXKA4YE"
-            }
-          },
           "ChomperLambdaFunctionQualifiedArn": {
             "Description": "Current Lambda function version",
             "Value": {
-              "Ref": "ChomperLambdaVersionFreasFQiHwKnj1dkUNqd8TLsO5iNrzTfkqWmgrShs"
-            }
-          },
-          "HttpApiId": {
-            "Description": "Id of the HTTP API",
-            "Value": {
-              "Ref": "HttpApi"
-            }
-          },
-          "HttpApiUrl": {
-            "Description": "URL of the HTTP API",
-            "Value": {
-              "Fn::Join": [
-                "",
-                [
-                  "https://",
-                  {
-                    "Ref": "HttpApi"
-                  },
-                  ".execute-api.",
-                  {
-                    "Ref": "AWS::Region"
-                  },
-                  ".",
-                  {
-                    "Ref": "AWS::URLSuffix"
-                  }
-                ]
-              ]
+              "Ref": "ChomperLambdaVersionSR2OcORevcbAf4DQjGqDbRryK2GQo8OsqkuQkh34"
             }
           }
         }
@@ -700,23 +513,6 @@
     },
     "pluginsData": {},
     "functions": {
-      "hello": {
-        "handler": "handler.hello",
-        "events": [
-          {
-            "httpApi": "GET /hello",
-            "resolvedMethod": "GET",
-            "resolvedPath": "/hello"
-          }
-        ],
-        "name": "lfstats-chomper-dev-hello",
-        "package": {},
-        "memory": 1024,
-        "timeout": 120,
-        "runtime": "nodejs14.x",
-        "vpc": {},
-        "versionLogicalId": "HelloLambdaVersionrVcG2Sk3q28v6YCtUIywTRxwkbqUSuiWwmsaTXKA4YE"
-      },
       "chomper": {
         "handler": "index.handler",
         "environment": {
@@ -744,7 +540,7 @@
         "timeout": 120,
         "runtime": "nodejs14.x",
         "vpc": {},
-        "versionLogicalId": "ChomperLambdaVersionFreasFQiHwKnj1dkUNqd8TLsO5iNrzTfkqWmgrShs"
+        "versionLogicalId": "ChomperLambdaVersionSR2OcORevcbAf4DQjGqDbRryK2GQo8OsqkuQkh34"
       }
     },
     "configValidationMode": "warn",
@@ -766,7 +562,7 @@
     "artifact": "C:\\Users\\russe\\GitHub\\lfstats-chomper\\.serverless\\lfstats-chomper.zip"
   },
   "package": {
-    "artifactDirectoryName": "serverless/lfstats-chomper/dev/1616404015446-2021-03-22T09:06:55.446Z",
+    "artifactDirectoryName": "serverless/lfstats-chomper/dev/1616485026249-2021-03-23T07:37:06.249Z",
     "artifact": "lfstats-chomper.zip"
   }
 }
