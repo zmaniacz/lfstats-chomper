@@ -1,5 +1,8 @@
 service: lfstats-chomper
 
+package:
+  individually: true
+
 frameworkVersion: "2"
 
 provider:
@@ -38,14 +41,14 @@ provider:
   runtime: nodejs14.x
   timeout: 120
   lambdaHashingVersion: 20201221
-  #httpApi:
-  #  cors: true
+  httpApi:
+    cors: true
 
 functions:
-  #hello:
-  #  handler: handler.hello
-  #  events:
-  #    - httpApi: "GET /hello"
+  newChomper:
+    handler: chomper.chomper
+    events:
+      - httpApi: "GET /chomper"
   chomper:
     handler: index.handler
     environment:
@@ -59,3 +62,13 @@ functions:
           rules:
             - suffix: .tdf
           existing: true
+
+plugins:
+  - serverless-offline
+  - serverless-bundle
+
+custom:
+  bundle:
+    ignorePackages:
+      - pg-native
+    linting: false
