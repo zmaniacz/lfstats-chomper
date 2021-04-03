@@ -1,21 +1,20 @@
-const aws = require("aws-sdk");
-const readline = require("readline");
-const moment = require("moment");
-const iconv = require("iconv-lite");
-const AutoDetectDecoderStream = require("autodetect-decoder-stream");
-const { createPool, sql } = require("slonik");
-const {
-  createQueryLoggingInterceptor,
-} = require("slonik-interceptor-query-logging");
+import { S3, SecretsManager } from "aws-sdk";
+import { createInterface } from "readline";
+import moment from "moment";
+import { encodeStream } from "iconv-lite";
+import AutoDetectDecoderStream from "autodetect-decoder-stream";
+import { createPool, sql } from "slonik";
+import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
 
 const interceptors = [createQueryLoggingInterceptor()];
 
-const s3 = new aws.S3({ apiVersion: "2006-03-01" });
-const secretsmanager = new aws.SecretsManager({ apiVersion: "2017-10-17" });
+const s3 = new S3({ apiVersion: "2006-03-01" });
+const secretsmanager = new SecretsManager({ apiVersion: "2017-10-17" });
 const chomperVersion = "1.0.0";
 
 const targetBucket = process.env.TARGET_BUCKET;
 let connectionString = "";
+//let tdfConnectionString = "";
 
 function getDBCreds() {
   return secretsmanager
@@ -26,13 +25,13 @@ function getDBCreds() {
     .promise();
 }
 
-exports.handler = async (event, context) => {
+export async function handler(event, context) {
   console.log("FIND SECRET");
   try {
     const data = await getDBCreds();
     let secret = JSON.parse(data.SecretString);
     connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats`;
-    tdfConnectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf`;
+    //tdfConnectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf`;
   } catch (err) {
     console.log("SECRET ERROR", err.stack);
   }
@@ -361,12 +360,12 @@ exports.handler = async (event, context) => {
     `);
 
     try {
-      const rl = readline.createInterface({
+      const rl = createInterface({
         input: s3
           .getObject(params)
           .createReadStream()
           .pipe(new AutoDetectDecoderStream())
-          .pipe(iconv.encodeStream("utf8")),
+          .pipe(encodeStream("utf8")),
         terminal: false,
       });
 
@@ -1233,7 +1232,7 @@ exports.handler = async (event, context) => {
     }
   });
 
-  try {
+  /*try {
     const tdfPool = createPool(tdfConnectionString, { interceptors });
     await tdfPool.connect(async (connection) => {
       await connection.transaction(async (client) => {
@@ -1374,5 +1373,5 @@ exports.handler = async (event, context) => {
     });
   } catch (err) {
     console.log("CHOMP2 ERROR", err.stack);
-  }
-};
+  }*/
+}

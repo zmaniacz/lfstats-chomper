@@ -1,9 +1,9 @@
-  
 {
-    "compilerOptions": {
-      "baseUrl": ".",
-      "target": "es6",
-      "sourceMap": true,
-      "moduleResolution": "node"
-    }
+  "compilerOptions": {
+    "baseUrl": ".",
+    "target": "es6",
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "strict": true
   }
+}

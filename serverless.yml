@@ -1,9 +1,15 @@
 service: lfstats-chomper
 
+frameworkVersion: "2"
+
+useDotenv: true
+
 package:
   individually: true
 
-frameworkVersion: "2"
+plugins:
+  - serverless-bundle
+  - serverless-offline
 
 provider:
   name: aws
@@ -63,12 +69,10 @@ functions:
             - suffix: .tdf
           existing: true
 
-plugins:
-  - serverless-offline
-  - serverless-bundle
-
 custom:
   bundle:
     ignorePackages:
       - pg-native
     linting: false
+    externals:
+      - slonik
