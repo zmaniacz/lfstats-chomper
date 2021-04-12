@@ -1130,7 +1130,7 @@ export async function handler(event, context) {
             mvpDetails.elimBonus.value = Number.parseFloat(
               Math.max(
                 1.0,
-                (newGame.missionDuration - newGame.missionLength) / 60
+                (newGame.duration - newGame.game_length) / 60
               ).toFixed(2)
             );
 
