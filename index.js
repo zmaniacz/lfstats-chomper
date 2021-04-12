@@ -4,9 +4,10 @@ import moment from "moment";
 import { encodeStream } from "iconv-lite";
 import AutoDetectDecoderStream from "autodetect-decoder-stream";
 import { createPool, sql } from "slonik";
-import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
+//import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
 
-const interceptors = [createQueryLoggingInterceptor()];
+//const interceptors = [createQueryLoggingInterceptor()];
+const interceptors = [];
 
 const s3 = new S3({ apiVersion: "2006-03-01" });
 const secretsmanager = new SecretsManager({ apiVersion: "2017-10-17" });
@@ -1126,7 +1127,7 @@ export async function handler(event, context) {
           //WINNER
           //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
           if (scorecard.elim_other_team > 0)
-            mvpDetails.elimBonus.value += Number.parseFloat(
+            mvpDetails.elimBonus.value = Number.parseFloat(
               Math.max(
                 1.0,
                 (newGame.missionDuration - newGame.missionLength) / 60
