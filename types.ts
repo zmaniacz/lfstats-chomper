@@ -146,7 +146,7 @@ export interface GameAction {
   player: string | null;
   action: string | null;
   target: string | null;
-  state: Map<string, EntityState>;
+  state?: Map<string, EntityState>;
 }
 
 export interface EntityDefault {

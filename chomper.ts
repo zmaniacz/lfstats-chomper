@@ -154,6 +154,36 @@ export const chomper = async (
             action: null,
             target: null,
           } as GameAction;
+          // EventMissionStart 0100
+          // EventMissionEnd 0101
+          // EventShotEmpty 0200
+          // EventShotMiss 0201
+          // EventShotGenMiss 0202
+          // EventShotGenDamage 0203
+          // EventShotGenDestroy 0204
+          // EventShotOppDamage 0205
+          // EventShotOppDown 0206
+          // EventShotOwnDamage 0207 - unused?
+          // EventShotOwnDown 0208 - unused?
+          // EventMslStart 0300
+          // EventMslGenMiss 0301
+          // EventMslGenDamage 0302
+          // EventMslGenDestroy 0303
+          // EventMslMiss 0304
+          // EventMslOppDamage 0305
+          // EventMslOppDown 0306
+          // EventMslOwnDamage 0307
+          // EventMslOwnDown 0308
+          // EventRapidAct 0400
+          // EventRapidDeac 0401
+          // EventNukeAct 0404
+          // EventNukeDeton 0405
+          // EventResupplyShots 0500
+          // EventResupplyLives 0502
+          // EventResupplyTeamShots 0510
+          // EventResupplyTeamLives 0512
+          // EventPenalty 0600
+          // EventAchieve 0900
 
           if (record[2] === "0100" || record[2] === "0101") {
             action.action = record[3];
@@ -164,7 +194,7 @@ export const chomper = async (
               game.missionLengthMillis = parseInt(record[1]);
             }
           } else {
-            let player = entities.get(record[3]);
+            let player = entities.get(record[3]) as Entity;
             action.player = record[3];
             action.action = record[4];
             action.target = record?.[5] ?? null;
@@ -200,7 +230,7 @@ export const chomper = async (
               record[2] === "0306" ||
               record[2] === "0308"
             ) {
-              let target = entities.get(record[5]);
+              let target = entities.get(record[5]) as Entity;
 
               if (record[2] === "0205" || record[2] === "0206") {
                 if (player.isRapidActive) {
@@ -215,7 +245,7 @@ export const chomper = async (
 
             //sum up total resupplies
             if (record[2] === "0500" || record[2] === "0502") {
-              let target = entities.get(record[5]);
+              let target = entities.get(record[5]) as Entity;
               player.resupplies += 1;
               //if rapid fire is active on the target, now it's over
               target.isRapidActive = false;
@@ -248,7 +278,7 @@ export const chomper = async (
           });
         } else if (record[0] === "6") {
           //;6/entity-end	time	id	type	score
-          let player = entities.get(record[2]);
+          let player = entities.get(record[2]) as Entity;
           player = {
             end: parseInt(record[1]),
             score: parseInt(record[4]),
@@ -263,7 +293,7 @@ export const chomper = async (
           entities.set(player.ipl_id, player);
         } else if (record[0] === "7") {
           //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
-          let player = entities.get(record[1]);
+          let player = entities.get(record[1]) as Entity;
 
           //clean up rapid
           if (player.isRapidActive) {
