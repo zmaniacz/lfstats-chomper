@@ -4,15 +4,28 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import { APIGatewayEvent, APIGatewayProxyResult } from "aws-lambda";
-import { entityTypes, positionDefaults } from "./constants";
 import { once } from "events";
 import { decodeStream, encodeStream } from "iconv-lite";
 import { DateTime } from "luxon";
 import { createInterface } from "readline";
-import { createPool, sql } from "slonik";
 import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
 import { Readable } from "stream";
-import { Game, GameMetaData, Entity, Team, GameAction } from "types";
+import {
+  DeacType,
+  Entity,
+  EntityState,
+  EntityType,
+  Game,
+  GameAction,
+  GameMetaData,
+  Team,
+} from "types";
+import {
+  defaultInitialState,
+  entityTypes,
+  positionDefaults,
+} from "./constants";
+import * as _ from "lodash";
 
 export const chomper = async (
   event: APIGatewayEvent
@@ -73,6 +86,7 @@ export const chomper = async (
   let entities = new Map<string, Entity>();
   let teams = new Map<number, Team>();
   let actions = new Map<number, GameAction>();
+  let currentState = new Map<string, EntityState>();
   let game_deltas = [];
   //let gameId = null;
 
@@ -140,11 +154,19 @@ export const chomper = async (
             battlesuit: record?.[8] ?? null,
             endCode: null,
             ...positionDefaults[position],
-            initialState: null,
+            initialState: { ...defaultInitialState },
             finalState: null,
             lfstatsId: null,
           } as Entity;
+
+          //set up initial numbners based on the entity type
+          entity.initialState.shots = entity.initialShots;
+          entity.initialState.lives = entity.initialLives;
+          entity.initialState.missilesLeft = entity.initialMissiles;
+          entity.initialState.currentHP = entity.maxHP;
+
           entities.set(entity.ipl_id, entity);
+          currentState.set(entity.ipl_id, { ...entity.initialState });
         } else if (record[0] === "4") {
           //;4/event	time	type	varies
           let action = {
@@ -153,10 +175,11 @@ export const chomper = async (
             player: null,
             action: null,
             target: null,
+            state: _.cloneDeep(currentState),
           } as GameAction;
           // EventMissionStart 0100
           // EventMissionEnd 0101
-          // EventShotEmpty 0200
+          // EventShotEmpty 0200 - unused?
           // EventShotMiss 0201
           // EventShotGenMiss 0202
           // EventShotGenDamage 0203
@@ -165,9 +188,9 @@ export const chomper = async (
           // EventShotOppDown 0206
           // EventShotOwnDamage 0207 - unused?
           // EventShotOwnDown 0208 - unused?
-          // EventMslStart 0300
+          // EventMslStart 0300 - no state change
           // EventMslGenMiss 0301
-          // EventMslGenDamage 0302
+          // EventMslGenDamage 0302 - unused probably?
           // EventMslGenDestroy 0303
           // EventMslMiss 0304
           // EventMslOppDamage 0305
@@ -185,16 +208,19 @@ export const chomper = async (
           // EventPenalty 0600
           // EventAchieve 0900
 
-          if (record[2] === "0100" || record[2] === "0101") {
+          if (action.type === "0100" || action.type === "0101") {
             action.action = record[3];
             //compute game start, end and length
-            if (record[2] === "0101") {
+            if (action.type === "0101") {
               game.missionLength =
                 (Math.round(parseInt(record[1]) / 1000) * 1000) / 1000;
               game.missionLengthMillis = parseInt(record[1]);
             }
           } else {
+            let playerState = action.state.get(record[3]) as EntityState;
             let player = entities.get(record[3]) as Entity;
+            let targetState = action.state.get(record[5]) as EntityState;
+            let target = entities.get(record[5]) as Entity;
             action.player = record[3];
             action.action = record[4];
             action.target = record?.[5] ?? null;
@@ -205,22 +231,116 @@ export const chomper = async (
             //we cant actually update state until al the actions ar eparsed and loaded
             //then go back through adn apply each action to the initial state
 
-            //track rapid fire starts
-            if (record[2] === "0400") {
-              /*player.rapidFires.push({
-                rapidStart: parseInt(record[1]),
-                rapidEnd: null,
-                rapidLength: null,
-              });*/
-              player.isRapidActive = true;
+            // EventShotMiss 0201
+            // EventShotGenMiss 0202
+            // EventShotGenDamage 0203
+            // EventShotGenDestroy 0204
+            if (
+              action.type === "0201" ||
+              action.type === "0202" ||
+              action.type === "0203" ||
+              action.type === "0204"
+            ) {
+              playerState.shots -= 1;
+              playerState.shotsFired += 1;
+              if (playerState.isRapidActive) {
+                playerState.shotsFiredDuringRapid += 1;
+              }
+              if (action.type === "0203") playerState.shotBase += 1;
+              if (action.type === "0204") {
+                playerState.destroyBase += 1;
+                playerState.spEarned += 5;
+                playerState.score += 1001;
+              }
             }
 
-            //track rapid fire misses
-            //we don't have to total shots separately since the entity end line gives us that total
-            if (record[2] === "0201") {
-              if (player.isRapidActive) {
-                player.shotsFiredDuringRapid += 1;
+            // EventShotOppDamage 0205
+            // Only occurs against a 3-hit
+            if (action.type === "0205") {
+              //update the player
+              playerState.shots -= 1;
+              playerState.shotsFired += 1;
+              playerState.shotsHit += 1;
+              playerState.shotOpponent += 1;
+              playerState.shot3Hit += 1;
+              if (playerState.isRapidActive) {
+                playerState.shotsFiredDuringRapid += 1;
+                playerState.shotsHitDuringRapid += 1;
+                playerState.shotOpponentDuringRapid += 1;
+                playerState.shot3HitDuringRapid += 1;
+              } else {
+                playerState.spEarned += 1;
               }
+              playerState.score += 100;
+
+              targetState.selfHit += 1;
+              targetState.currentHP -= player.shotPower;
+              targetState.score -= 20;
+            }
+
+            // EventShotOppDown 0206
+            if (action.type === "0206") {
+              //update the player
+              playerState.shots -= 1;
+              playerState.shotsFired += 1;
+              playerState.shotsHit += 1;
+              playerState.shotOpponent += 1;
+              playerState.deacOpponent += 1;
+              if (playerState.isRapidActive) {
+                playerState.shotsFiredDuringRapid += 1;
+                playerState.shotsHitDuringRapid += 1;
+                playerState.shotOpponentDuringRapid += 1;
+                playerState.deacOpponentDuringRapid += 1;
+              } else {
+                playerState.spEarned += 1;
+              }
+              playerState.score += 100;
+
+              if (
+                target.position === EntityType.Commander ||
+                target.position === EntityType.Heavy
+              ) {
+                playerState.shot3Hit += 1;
+                playerState.deac3Hit += 1;
+                if (playerState.isRapidActive) {
+                  playerState.shot3HitDuringRapid += 1;
+                  playerState.deac3HitDuringRapid += 1;
+                }
+              }
+
+              if (target.position === EntityType.Medic) {
+                playerState.medicHits += 1;
+                if (playerState.isRapidActive) {
+                  playerState.medicHitsDuringRapid += 1;
+                }
+              }
+
+              targetState.selfHit += 1;
+              targetState.currentHP = 0;
+              targetState.lastDeacTime = action.time;
+              targetState.lastDeacType = DeacType.Opponent;
+              targetState.isActive = false;
+              targetState.score -= 20;
+            }
+
+            // EventMslGenMiss 0301
+            if ((action.type = "0301")) {
+              playerState.missilesLeft -= 1;
+            }
+
+            // EventMslGenDestroy 0303
+            if ((action.type = "0303")) {
+              playerState.missilesLeft -= 1;
+              playerState.destroyBase += 1;
+              playerState.missileBase += 1;
+              playerState.score += 1001;
+              playerState.spEarned += 5;
+            }
+
+            //track rapid fire starts
+            if (record[2] === "0400") {
+              playerState.isRapidActive = true;
+              playerState.spSpent += 20;
             }
 
             //track and total hits
@@ -233,40 +353,41 @@ export const chomper = async (
               let target = entities.get(record[5]) as Entity;
 
               if (record[2] === "0205" || record[2] === "0206") {
-                if (player.isRapidActive) {
-                  player.shotsFiredDuringRapid += 1;
-                  player.shotsHitDuringRapid += 1;
+                if (playerState.isRapidActive) {
+                  playerState.shotsFiredDuringRapid += 1;
+                  playerState.shotsHitDuringRapid += 1;
                   if (player.team === target.team)
-                    player.shotTeamDuringRapid += 1;
-                  else player.shotOpponentDuringRapid += 1;
+                    playerState.shotTeamDuringRapid += 1;
+                  else playerState.shotOpponentDuringRapid += 1;
                 }
               }
             }
 
             //sum up total resupplies
             if (record[2] === "0500" || record[2] === "0502") {
-              let target = entities.get(record[5]) as Entity;
-              player.resupplies += 1;
+              let targetState = action.state.get(record[5]) as EntityState;
+              if (record[2] === "0500") playerState.resupplyShots += 1;
+              if (record[2] === "0502") playerState.resupplyLives += 1;
               //if rapid fire is active on the target, now it's over
-              target.isRapidActive = false;
-              if (target.rapidFires.length > 0) {
+              targetState.isRapidActive = false;
+              /*if (targetState.rapidFires.length > 0) {
                 let rapidStatus =
-                  target.rapidFires[target.rapidFires.length - 1];
+                  targetState.rapidFires[targetState.rapidFires.length - 1];
                 rapidStatus.rapidEnd = parseInt(record[1]);
                 rapidStatus.rapidLength =
                   rapidStatus.rapidEnd - rapidStatus.rapidStart;
-              }
+              }*/
             }
 
             //sum up total bases destroyed
             if (record[2] === "0303" || record[2] === "0204") {
-              player.bases_destroyed += 1;
+              playerState.destroyBase += 1;
             }
           }
 
           actions.set(action.time, action);
         } else if (record[0] === "5") {
-          let player = entities.get(record[2]);
+          let player = entities.get(record[2]) as Entity;
           //;5/score	time	entity	old	delta	new
           game_deltas.push({
             time: record[1],
@@ -280,31 +401,25 @@ export const chomper = async (
           //;6/entity-end	time	id	type	score
           let player = entities.get(record[2]) as Entity;
           player = {
-            end: parseInt(record[1]),
-            score: parseInt(record[4]),
+            endTime: parseInt(record[1]),
             endCode: parseInt(record[3]),
-            eliminated: parseInt(record[3]) === 4 ? true : false,
-            survived:
-              (Math.round((parseInt(record[1]) - player.start) / 1000) * 1000) /
-              1000,
-            survivedMillis: parseInt(record[1]) - player.start,
             ...player,
           };
           entities.set(player.ipl_id, player);
         } else if (record[0] === "7") {
           //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
-          let player = entities.get(record[1]) as Entity;
+          let playerState = currentState.get(record[1]) as EntityState;
 
           //clean up rapid
-          if (player.isRapidActive) {
-            player.isRapidActive = false;
-            let rapidStatus = player.rapidFires[player.rapidFires.length - 1];
+          if (playerState.isRapidActive) {
+            playerState.isRapidActive = false;
+            /*let rapidStatus = player.rapidFires[player.rapidFires.length - 1];
             rapidStatus.rapidEnd = player.end;
             rapidStatus.rapidLength =
-              rapidStatus.rapidEnd - rapidStatus.rapidStart;
+              rapidStatus.rapidEnd - rapidStatus.rapidStart;*/
           }
 
-          player = {
+          /*player = {
             accuracy: parseInt(record[2]) / Math.max(parseInt(record[3]), 1),
             hit_diff: parseInt(record[21]) / Math.max(parseInt(record[4]), 1),
             sp_earned:
@@ -341,7 +456,7 @@ export const chomper = async (
             ...player,
           };
 
-          entities.set(record[1], player);
+          entities.set(record[1], player);*/
         }
       });
       rl.on("error", async () => {
@@ -353,7 +468,7 @@ export const chomper = async (
       await once(rl, "close");
     }
   } catch (error) {
-    console.log("CHOMP2: READ ERROR");
+    console.log("CHOMP: READ ERROR");
     const { requestId, cfId, extendedRequestId } = error.$metadata;
     console.log({ requestId, cfId, extendedRequestId });
     return {
@@ -368,7 +483,7 @@ export const chomper = async (
     };
   }
 
-  try {
+  /*try {
     const pool = createPool(connectionString, { interceptors });
     await pool.connect(async (connection) => {
       await connection.transaction(async (client) => {
@@ -563,12 +678,12 @@ export const chomper = async (
         }
 
         //explicitly load lfstats ids into the actions object
-        /*for (let action of actions) {
+        for (let action of actions) {
           action.playerLfstatsId =
             entities.get(action.player)?.lfstatsId ?? null;
           action.targetLfstatsId =
             entities.get(action.target)?.lfstatsId ?? null;
-        }*/
+        }
 
         //insert the actions
         let chunkSize = 100;
@@ -612,17 +727,28 @@ export const chomper = async (
         2
       ),
     };
-  }
+  }*/
 
   return {
     statusCode: 200,
     body: JSON.stringify(
       {
         message: `${tdfId} chomped successfully`,
-        game,
+        entities: "",
       },
-      null,
+      replacer,
       2
     ),
   };
 };
+
+function replacer(key: any, value: any) {
+  if (value instanceof Map) {
+    return {
+      dataType: "Map",
+      value: [...value],
+    };
+  } else {
+    return value;
+  }
+}
