@@ -46,8 +46,9 @@ export interface Team extends lfstats {
   colorDesc: string;
 }
 
-export interface Entity extends lfstats {
+export interface Entity extends lfstats, EntityDefault {
   startTime: number;
+  endTime: number | null;
   ipl_id: string;
   type: string;
   desc: string;
@@ -55,16 +56,22 @@ export interface Entity extends lfstats {
   level: number;
   category: number;
   position: EntityType;
-  maxLives: number;
-  maxShots: number;
-  resupplyLives: number;
-  resupplyShots: number;
-  shotPower: number;
-  maxHP: number;
   battlesuit: string | null;
   endCode: number | null;
-  initialState: EntityState | null;
+  initialState: EntityState;
   finalState: EntityState | null;
+}
+
+export interface EntityDefault {
+  initialShots: number;
+  maxShots: number;
+  resupplyShots: number;
+  initialLives: number;
+  maxLives: number;
+  resupplyLives: number;
+  initialMissiles: number;
+  shotPower: number;
+  maxHP: number;
 }
 
 export interface EntityState {
@@ -89,6 +96,7 @@ export interface EntityState {
   shotOpponent: number; //total times an opponent was shot
   deacOpponent: number; //total times an opponent was deactivated
   shotBase: number; //total times abses or gens were shot
+  missBase: number; // total misses agianst a base
   destroyBase: number; //total times bases org ens were destroyed
   medicHits: number; //total times the opposing medic was hit
   ownMedicHits: number; //total times a teammate medic was hit
@@ -97,10 +105,12 @@ export interface EntityState {
   missileBase: number; //total times a base or gen was missiled
   missileTeam: number; //total times a teammate was missiled
   missileOpponent: number; //total time an oppionent was misisled
-  missiles: number; //current missiles remaining
+  missilesLeft: number; //current missiles remaining
   selfMissile: number; //total times player was missiled
   spSpent: number; //total special points spent
   spEarned: number; //total special poitns eanred
+  resupplyShots: number; //number of shot resupplies provided
+  resupplyLives: number; //number of life resupplies priovided
   ammoBoosts: number; //total ammo boosts pulled
   lifeBoosts: number; //total life boosts pulled
   ammoBoostedPlayers: number; //total players that received an ammo boost form this player
@@ -146,18 +156,5 @@ export interface GameAction {
   player: string | null;
   action: string | null;
   target: string | null;
-  state?: Map<string, EntityState>;
-}
-
-export interface EntityDefault {
-  shots: number;
-  maxShots: number;
-  resupplyShots: number;
-  lives: number;
-  maxLives: number;
-  resupplyLives: number;
-  missilesLeft: number;
-  shotPower: number;
-  currentHP: number;
-  maxHP: number;
+  state: Map<string, EntityState>;
 }
