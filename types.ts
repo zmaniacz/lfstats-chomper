@@ -108,8 +108,10 @@ export interface EntityState {
   missilesLeft: number; //current missiles remaining
   selfMissile: number; //total times player was missiled
   spSpent: number; //total special points spent
-  spEarned: number; //total special poitns eanred
+  spEarned: number; //total special points eanred
   resupplyShots: number; //number of shot resupplies provided
+  selfResupplyShots: number; //number of shots resupplies received
+  selfResupplyLives: number; //number of lives resupplies received
   resupplyLives: number; //number of life resupplies priovided
   ammoBoosts: number; //total ammo boosts pulled
   lifeBoosts: number; //total life boosts pulled
@@ -127,6 +129,7 @@ export interface EntityState {
   medicHitsDuringRapid: number;
   selfHitDuringRapid: number;
   selfDeacDuringRapid: number;
+  selfMissileDuringRapid: number;
   nukesActivated: number;
   nukesDetonated: number;
   nukeMedicHits: number;
@@ -156,5 +159,5 @@ export interface GameAction {
   player: string | null;
   action: string | null;
   target: string | null;
-  state: Map<string, EntityState>;
+  state: Map<string, EntityState> | null;
 }
