@@ -161,6 +161,7 @@ export const chomper = async (
           } as Entity;
 
           //set up initial numbers based on the entity type
+          entity.initialState.ipl_id = entity.ipl_id;
           entity.initialState.shots = entity.initialShots;
           entity.initialState.lives = entity.initialLives;
           entity.initialState.missilesLeft = entity.initialMissiles;
@@ -739,6 +740,7 @@ export const chomper = async (
       entity.finalState = _.cloneDeep(
         currentState.get(entity.ipl_id)
       ) as EntityState;
+      entity.finalState.isFinal = true;
     }
   }
 
