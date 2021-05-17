@@ -719,6 +719,7 @@ export const chomper = async (
     // EventPenalty 0600
     if (action.type === "0600") {
       playerState.isActive = false;
+      playerState.penalties += 1;
       if (targetState.isNuking) {
         targetState.isNuking = false;
         targetState.ownNukeCanceledByPenalty += 1;
