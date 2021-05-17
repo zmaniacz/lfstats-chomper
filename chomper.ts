@@ -297,10 +297,13 @@ export const chomper = async (
   let newActions: GameAction[] = [];
   //initialize entity state for creating reac events
   //this jsut holds an IplID and a lastdeactime - which will be null if the player is online
-  let tempStates = new Map<string, number | null>();
+  let tempStates = new Map<string, any>();
   for (let entity of entities.values()) {
     if (entity.type === "player") {
-      tempStates.set(entity.ipl_id, null);
+      tempStates.set(entity.ipl_id, {
+        lastDeacTime: null,
+        endTime: entity.endTime,
+      });
     }
   }
 
@@ -314,28 +317,37 @@ export const chomper = async (
       action.type === "0502" ||
       action.type === "0600"
     ) {
-      tempStates.set(action.target as string, action.time);
+      let t = tempStates.get(action.target as string);
+      t.lastDeacTime = action.time;
+      tempStates.set(action.target as string, t);
     }
     if (action.type === "0405") {
       //nuke
       let player = entities.get(action.player as string) as Entity;
       for (let [IplId, target] of entities) {
         if (target.type === "player" && player.team !== target.team) {
-          tempStates.set(IplId as string, action.time);
+          let t = tempStates.get(IplId as string);
+          t.lastDeacTime = action.time;
+          tempStates.set(IplId as string, t);
         }
       }
     }
-    for (let [IplId, lastDeacTime] of tempStates) {
-      if (lastDeacTime && lastDeacTime + 8000 <= action.time) {
+    for (let [IplId, state] of tempStates) {
+      if (
+        state.lastDeacTime &&
+        state.lastDeacTime + 8000 <= action.time &&
+        action.time < state.endTime
+      ) {
         newActions.push({
-          time: lastDeacTime + 8000,
+          time: state.lastDeacTime + 8000,
           type: "LFS001",
           action: " reactivated",
           player: IplId,
           target: null,
           state: null,
         });
-        tempStates.set(IplId, null);
+        state.lastDeacTime = null;
+        tempStates.set(IplId, state);
       }
     }
   }
@@ -734,6 +746,10 @@ export const chomper = async (
 
     action.state = _.cloneDeep(currentState);
   }
+
+  //do uptime calcs
+  //for loop that ticks every ms
+  //array of obejcts each containing a set of coutners for each player
 
   for (let entity of entities.values()) {
     if (entity.type === "player") {
