@@ -57,7 +57,7 @@ export interface Entity extends lfstats, EntityDefault {
   category: number;
   position: EntityType;
   battlesuit: string | null;
-  endCode: number | null;
+  endCode: string | null;
   initialState: EntityState;
   finalState: EntityState | null;
 }
@@ -81,6 +81,7 @@ export interface EntityState {
   score: number; //score
   isActive: boolean; //is the entity currently activated
   isNuking: boolean; //is the entity currently nuking
+  isEliminated: boolean; //has the entity been eliminated prior to game end
   lives: number; //curent lives total
   shots: number; //current shots total
   currentHP: number; //curent HP total

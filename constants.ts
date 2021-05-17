@@ -76,6 +76,7 @@ export const defaultInitialState: EntityState = {
   score: 0,
   isActive: false,
   isNuking: false,
+  isEliminated: false,
   lastDeacTime: null,
   lastDeacType: null,
   isRapidActive: false,

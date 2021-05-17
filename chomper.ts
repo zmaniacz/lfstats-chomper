@@ -209,7 +209,7 @@ export const chomper = async (
           let player = entities.get(record[2]) as Entity;
           player = {
             endTime: parseInt(record[1]),
-            endCode: parseInt(record[3]),
+            endCode: record[3],
             ...player,
           };
           entities.set(player.ipl_id, player);
@@ -289,12 +289,27 @@ export const chomper = async (
     };
   }
 
+  let elimActions: GameAction[] = [];
+  for (let entity of entities.values()) {
+    if (entity.type === "player" && entity.endCode !== "02") {
+      elimActions.push({
+        time: entity.endTime as number,
+        type: "LFS002",
+        action: " eliminated",
+        player: entity.ipl_id,
+        target: null,
+        state: null,
+      });
+    }
+  }
+  actions = [...actions, ...elimActions];
+
   //make sure our actions array is in time slice order
   actions.sort((a, b) => {
     return a.time - b.time;
   });
 
-  let newActions: GameAction[] = [];
+  let reacActions: GameAction[] = [];
   //initialize entity state for creating reac events
   //this jsut holds an IplID and a lastdeactime - which will be null if the player is online
   let tempStates = new Map<string, any>();
@@ -338,7 +353,7 @@ export const chomper = async (
         state.lastDeacTime + 8000 <= action.time &&
         action.time < state.endTime
       ) {
-        newActions.push({
+        reacActions.push({
           time: state.lastDeacTime + 8000,
           type: "LFS001",
           action: " reactivated",
@@ -352,7 +367,7 @@ export const chomper = async (
     }
   }
 
-  actions = [...actions, ...newActions];
+  actions = [...actions, ...reacActions];
   actions.sort((a, b) => {
     return a.time - b.time;
   });
@@ -629,7 +644,7 @@ export const chomper = async (
 
       for (const [ipl_id, state] of currentState.entries()) {
         let p = entities.get(ipl_id) as Entity;
-        if (p.team !== player.team) {
+        if (p.team !== player.team && !state.isEliminated) {
           if (p.position === EntityType.Medic) {
             playerState.nukeMedicHits += Math.min(state.lives, 3);
           }
@@ -744,12 +759,81 @@ export const chomper = async (
       playerState.isActive = true;
     }
 
+    // EventEliminated LFS002
+    if (action.type === "LFS002") {
+      playerState.isActive = false;
+      playerState.isEliminated = true;
+    }
+
+    if (player && player.position === EntityType.Ammo) {
+      playerState.shots = player.initialShots;
+    }
+
+    for (let [iplId, state] of currentState) {
+      if (state.isActive) {
+        state.uptime =
+          action.time -
+          state.resupplyDowntime -
+          state.nukeDowntime -
+          state.teamDeacDowntime -
+          state.oppDeacDowntime -
+          state.penaltyDowntime;
+      } else {
+        if (state.lastDeacType === DeacType.Nuke) {
+          state.nukeDowntime =
+            action.time -
+            state.uptime -
+            state.resupplyDowntime -
+            state.teamDeacDowntime -
+            state.oppDeacDowntime -
+            state.penaltyDowntime;
+        } else if (state.lastDeacType === DeacType.Opponent) {
+          state.oppDeacDowntime =
+            action.time -
+            state.uptime -
+            state.nukeDowntime -
+            state.resupplyDowntime -
+            state.teamDeacDowntime -
+            state.penaltyDowntime;
+        } else if (state.lastDeacType === DeacType.Penalty) {
+          state.penaltyDowntime =
+            action.time -
+            state.uptime -
+            state.resupplyDowntime -
+            state.nukeDowntime -
+            state.teamDeacDowntime -
+            state.oppDeacDowntime;
+        } else if (state.lastDeacType === DeacType.Resupply) {
+          state.resupplyDowntime =
+            action.time -
+            state.uptime -
+            state.nukeDowntime -
+            state.teamDeacDowntime -
+            state.oppDeacDowntime -
+            state.penaltyDowntime;
+        } else if (state.lastDeacType === DeacType.Team) {
+          state.teamDeacDowntime =
+            action.time -
+            state.uptime -
+            state.resupplyDowntime -
+            state.nukeDowntime -
+            state.oppDeacDowntime -
+            state.penaltyDowntime;
+        }
+      }
+    }
+
     action.state = _.cloneDeep(currentState);
   }
 
   //do uptime calcs
   //for loop that ticks every ms
   //array of obejcts each containing a set of coutners for each player
+  /*for (let action of actions) {
+    if (action.state) {
+      
+    }
+  }*/
 
   for (let entity of entities.values()) {
     if (entity.type === "player") {
@@ -757,6 +841,10 @@ export const chomper = async (
         currentState.get(entity.ipl_id)
       ) as EntityState;
       entity.finalState.isFinal = true;
+      if (entity.finalState.isNuking) {
+        entity.finalState.isNuking = false;
+        entity.finalState.ownNukeCanceledByGameEnd += 1;
+      }
     }
   }
 
