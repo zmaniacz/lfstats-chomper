@@ -716,6 +716,15 @@ export const chomper = async (
       }
     }
 
+    // EventPenalty 0600
+    if (action.type === "0600") {
+      playerState.isActive = false;
+      if (targetState.isNuking) {
+        targetState.isNuking = false;
+        targetState.ownNukeCanceledByPenalty += 1;
+      }
+    }
+
     // EventReactivate LFS001
     if (action.type === "LFS001") {
       playerState.isActive = true;
