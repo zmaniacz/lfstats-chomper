@@ -289,6 +289,7 @@ export const chomper = async (
     };
   }
 
+  //add a synthetic eliminated action so we can update state correctly
   let elimActions: GameAction[] = [];
   for (let entity of entities.values()) {
     if (entity.type === "player" && entity.endCode !== "02") {
@@ -404,26 +405,40 @@ export const chomper = async (
   // EventPenalty 0600
   // EventAchieve 0900
 
+  let stateHistory: EntityState[] = [];
+
   for (let action of actions) {
     let playerState = currentState.get(action.player as string) as EntityState;
     let player = entities.get(action.player as string) as Entity;
+    let prevPlayerState = _.cloneDeep(playerState);
     let targetState = currentState.get(action.target as string) as EntityState;
     let target = entities.get(action.target as string) as Entity;
+    let prevTargetState = _.cloneDeep(targetState);
 
     // EventShotMiss 0201
     // EventShotGenMiss 0202
     if (action.type === "0201" || action.type === "0202") {
-      playerState.shots -= 1;
+      playerState.stateTime = action.time;
+      playerState.shots =
+        player.position === EntityType.Ammo
+          ? player.initialShots
+          : playerState.shots - 1;
       playerState.shotsFired += 1;
       if (playerState.isRapidActive) {
         playerState.shotsFiredDuringRapid += 1;
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventShotGenDamage 0203
     // EventShotGenDestroy 0204
     if (action.type === "0203" || action.type === "0204") {
-      playerState.shots -= 1;
+      playerState.stateTime = action.time;
+      playerState.shots =
+        player.position === EntityType.Ammo
+          ? player.initialShots
+          : playerState.shots - 1;
       playerState.shotsFired += 1;
       playerState.shotsHit += 1;
       if (playerState.isRapidActive) {
@@ -437,13 +452,19 @@ export const chomper = async (
         playerState.spEarned += 5;
         playerState.score += 1001;
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventShotOppDamage 0205
     // Only occurs against a 3-hit
     // can be opponent or teammate
     if (action.type === "0205") {
-      playerState.shots -= 1;
+      playerState.stateTime = action.time;
+      playerState.shots =
+        player.position === EntityType.Ammo
+          ? player.initialShots
+          : playerState.shots - 1;
       playerState.shotsFired += 1;
       playerState.shotsHit += 1;
 
@@ -470,15 +491,22 @@ export const chomper = async (
         if (player.team !== target.team) playerState.spEarned += 1;
       }
 
+      targetState.stateTime = action.time;
       targetState.selfHit += 1;
       targetState.currentHP -= player.shotPower;
       targetState.score -= 20;
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     // EventShotOppDown 0206
     if (action.type === "0206") {
-      //update the player
-      playerState.shots -= 1;
+      playerState.stateTime = action.time;
+      playerState.shots =
+        player.position === EntityType.Ammo
+          ? player.initialShots
+          : playerState.shots - 1;
       playerState.shotsFired += 1;
       playerState.shotsHit += 1;
 
@@ -531,6 +559,7 @@ export const chomper = async (
         }
       }
 
+      targetState.stateTime = action.time;
       targetState.selfHit += 1;
       //reset HP so we can track while down
       targetState.currentHP = target.maxHP;
@@ -557,24 +586,34 @@ export const chomper = async (
           playerState.cancelOpponentNuke += 1;
         }
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     // EventMslGenMiss 0301
     if (action.type === "0301") {
+      playerState.stateTime = action.time;
       playerState.missilesLeft -= 1;
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventMslGenDestroy 0303
     if (action.type === "0303") {
+      playerState.stateTime = action.time;
       playerState.missilesLeft -= 1;
       playerState.destroyBase += 1;
       playerState.missileBase += 1;
       playerState.score += 1001;
       playerState.spEarned += 5;
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventMslOppDown 0306
     if (action.type === "0306") {
+      playerState.stateTime = action.time;
       playerState.missilesLeft -= 1;
       if (player.team === target.team) {
         playerState.score -= 500;
@@ -597,6 +636,7 @@ export const chomper = async (
         playerState.medicHits += 2;
       }
 
+      targetState.stateTime = action.time;
       targetState.score -= 100;
       targetState.isActive = false;
       targetState.lives = Math.max(targetState.lives - 2, 0);
@@ -623,28 +663,40 @@ export const chomper = async (
           playerState.cancelOpponentNuke += 1;
         }
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     //track rapid fire starts
     if (action.type === "0400") {
+      playerState.stateTime = action.time;
       playerState.isRapidActive = true;
       playerState.spSpent += 10;
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     if (action.type === "0404") {
+      playerState.stateTime = action.time;
       playerState.isNuking = true;
       playerState.spSpent += 20;
       playerState.nukesActivated += 1;
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     if (action.type === "0405") {
+      playerState.stateTime = action.time;
       playerState.isNuking = false;
       playerState.nukesDetonated += 1;
       playerState.score += 500;
 
       for (const [ipl_id, state] of currentState.entries()) {
+        let prevState = _.cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (p.team !== player.team && !state.isEliminated) {
+          state.stateTime = action.time;
           if (p.position === EntityType.Medic) {
             playerState.nukeMedicHits += Math.min(state.lives, 3);
           }
@@ -658,15 +710,21 @@ export const chomper = async (
           state.lastDeacType = DeacType.Nuke;
           state.lives = Math.max(state.lives - 3, 0);
           state.currentHP = p.maxHP;
+
+          stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
         }
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventResupplyShots 0500
     if (action.type === "0500") {
+      playerState.stateTime = action.time;
       playerState.shotsFired += 1;
       playerState.resupplyShots += 1;
 
+      targetState.stateTime = action.time;
       targetState.isActive = false;
       targetState.lastDeacTime = action.time;
       targetState.lastDeacType = DeacType.Resupply;
@@ -682,12 +740,18 @@ export const chomper = async (
         playerState.cancelTeamNukeByResupply += 1;
         playerState.cancelTeamNuke += 1;
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
     }
+
     // EventResupplyLives 0502
     if (action.type === "0502") {
+      playerState.stateTime = action.time;
       playerState.shotsFired += 1;
       playerState.resupplyLives += 1;
 
+      targetState.stateTime = action.time;
       targetState.isActive = false;
       targetState.lastDeacTime = action.time;
       targetState.lastDeacType = DeacType.Resupply;
@@ -704,136 +768,95 @@ export const chomper = async (
         playerState.cancelTeamNukeByResupply += 1;
         playerState.cancelTeamNuke += 1;
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     // EventResupplyTeamShots 0510
     if (action.type === "0510") {
+      playerState.stateTime = action.time;
       playerState.ammoBoosts += 1;
       playerState.spSpent += 15;
 
       for (const [ipl_id, state] of currentState.entries()) {
+        let prevState = _.cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (
           p.team === player.team &&
           state.isActive &&
           p.position !== EntityType.Ammo
         ) {
+          state.stateTime = action.time;
           state.shots = Math.min(state.shots + p.resupplyShots, p.maxShots);
           state.ammoBoostReceieved += 1;
           playerState.ammoBoostedPlayers += 1;
+
+          stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
         }
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventResupplyTeamLives 0512
     if (action.type === "0512") {
+      playerState.stateTime = action.time;
       playerState.lifeBoosts += 1;
       playerState.spSpent += 10;
 
       for (const [ipl_id, state] of currentState.entries()) {
+        let prevState = _.cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (
           p.team === player.team &&
           state.isActive &&
           p.position !== EntityType.Medic
         ) {
+          state.stateTime = action.time;
           state.lives = Math.min(state.lives + p.resupplyLives, p.maxLives);
           state.lifeBoostReceived += 1;
           playerState.lifeBoostedPlayers += 1;
+
+          stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
         }
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventPenalty 0600
     if (action.type === "0600") {
+      playerState.stateTime = action.time;
       playerState.isActive = false;
       playerState.penalties += 1;
       if (targetState.isNuking) {
         targetState.isNuking = false;
         targetState.ownNukeCanceledByPenalty += 1;
       }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventReactivate LFS001
     if (action.type === "LFS001") {
+      playerState.stateTime = action.time;
       playerState.isActive = true;
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventEliminated LFS002
     if (action.type === "LFS002") {
+      playerState.stateTime = action.time;
       playerState.isActive = false;
       playerState.isEliminated = true;
-    }
 
-    if (player && player.position === EntityType.Ammo) {
-      playerState.shots = player.initialShots;
-    }
-
-    for (let [iplId, state] of currentState) {
-      if (state.isActive) {
-        state.uptime =
-          action.time -
-          state.resupplyDowntime -
-          state.nukeDowntime -
-          state.teamDeacDowntime -
-          state.oppDeacDowntime -
-          state.penaltyDowntime;
-      } else {
-        if (state.lastDeacType === DeacType.Nuke) {
-          state.nukeDowntime =
-            action.time -
-            state.uptime -
-            state.resupplyDowntime -
-            state.teamDeacDowntime -
-            state.oppDeacDowntime -
-            state.penaltyDowntime;
-        } else if (state.lastDeacType === DeacType.Opponent) {
-          state.oppDeacDowntime =
-            action.time -
-            state.uptime -
-            state.nukeDowntime -
-            state.resupplyDowntime -
-            state.teamDeacDowntime -
-            state.penaltyDowntime;
-        } else if (state.lastDeacType === DeacType.Penalty) {
-          state.penaltyDowntime =
-            action.time -
-            state.uptime -
-            state.resupplyDowntime -
-            state.nukeDowntime -
-            state.teamDeacDowntime -
-            state.oppDeacDowntime;
-        } else if (state.lastDeacType === DeacType.Resupply) {
-          state.resupplyDowntime =
-            action.time -
-            state.uptime -
-            state.nukeDowntime -
-            state.teamDeacDowntime -
-            state.oppDeacDowntime -
-            state.penaltyDowntime;
-        } else if (state.lastDeacType === DeacType.Team) {
-          state.teamDeacDowntime =
-            action.time -
-            state.uptime -
-            state.resupplyDowntime -
-            state.nukeDowntime -
-            state.oppDeacDowntime -
-            state.penaltyDowntime;
-        }
-      }
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     action.state = _.cloneDeep(currentState);
   }
-
-  //do uptime calcs
-  //for loop that ticks every ms
-  //array of obejcts each containing a set of coutners for each player
-  /*for (let action of actions) {
-    if (action.state) {
-      
-    }
-  }*/
 
   for (let entity of entities.values()) {
     if (entity.type === "player") {
@@ -1099,7 +1122,7 @@ export const chomper = async (
     body: JSON.stringify(
       {
         message: `${tdfId} chomped successfully`,
-        entities,
+        stateHistory,
       },
       replacer,
       2
@@ -1116,4 +1139,32 @@ function replacer(key: any, value: any) {
   } else {
     return value;
   }
+}
+
+function calcUptime(state: EntityState, prevState: EntityState) {
+  let timeDelta = state.stateTime - prevState.stateTime;
+  if (prevState.isActive) {
+    //Player was online prior to this event, so time delta goes to uptime
+    state.uptime += timeDelta;
+  } else {
+    //Player was offline so time delta goes to whatever the last deac event was
+    switch (state.lastDeacType) {
+      case DeacType.Nuke:
+        state.nukeDowntime += timeDelta;
+        break;
+      case DeacType.Opponent:
+        state.oppDeacDowntime += timeDelta;
+        break;
+      case DeacType.Penalty:
+        state.penaltyDowntime += timeDelta;
+        break;
+      case DeacType.Resupply:
+        state.resupplyDowntime += timeDelta;
+        break;
+      case DeacType.Team:
+        state.teamDeacDowntime += timeDelta;
+        break;
+    }
+  }
+  return state;
 }
