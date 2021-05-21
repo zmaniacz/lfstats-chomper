@@ -26,7 +26,7 @@ import {
   positionDefaults,
 } from "./constants";
 import * as _ from "lodash";
-import { last } from "lodash";
+import { createPool, sql } from "slonik";
 
 export const chomper = async (
   event: APIGatewayEvent
@@ -142,7 +142,7 @@ export const chomper = async (
           teams.set(team.index, team);
         } else if (record[0] === "3") {
           //;3/entity-start	time	id	type	desc	team	level	category
-          let position = entityTypes[parseInt(record[7])];
+          let position = entityTypes[parseInt(record[7])] ?? null;
           let entity = {
             startTime: parseInt(record[1]),
             ipl_id: record[2],
@@ -828,7 +828,7 @@ export const chomper = async (
     }
   }
 
-  /*try {
+  try {
     const pool = createPool(connectionString, { interceptors });
     await pool.connect(async (connection) => {
       await connection.transaction(async (client) => {
@@ -856,9 +856,9 @@ export const chomper = async (
           VALUES (
             ${sql.join(
               [...entities]
-                .filter((p) => p[1].type === "player")
+                .filter(([, e]) => e.type === "player")
                 .sort()
-                .map((p) => sql.join([p[1].ipl_id, p[1].desc], sql`, `)),
+                .map(([, e]) => sql.join([e.ipl_id, e.desc], sql`, `)),
               sql`), (`
             )}
           )
@@ -868,7 +868,10 @@ export const chomper = async (
 
         //update our entities with their lfstats IDs for future reference
         for (let player of playerRecords) {
-          entities.get(player.ipl_id as string).lfstatsId = player.id as number;
+          let entity = entities.get(player.ipl_id as string);
+          if (entity) {
+            entity.lfstatsId = player.id as number;
+          }
         }
 
         //insert current aliases
@@ -877,11 +880,11 @@ export const chomper = async (
           VALUES (
             ${sql.join(
               [...entities]
-                .filter((p) => p[1].type === "player")
+                .filter(([, p]) => p.type === "player")
                 .sort()
-                .map((p) =>
+                .map(([, p]) =>
                   sql.join(
-                    [p[1].desc, game.missionStartTime, p[1].lfstatsId],
+                    [p.desc, game.missionStartTime, p.lfstatsId],
                     sql`, `
                   )
                 ),
@@ -947,15 +950,9 @@ export const chomper = async (
           VALUES
             (
               ${sql.join(
-                [...teams].map((t) =>
+                [...teams].map(([, t]) =>
                   sql.join(
-                    [
-                      t[1].index,
-                      t[1].desc,
-                      t[1].colorEnum,
-                      t[1].colorDesc,
-                      gameRecord.id,
-                    ],
+                    [t.index, t.desc, t.colorEnum, t.colorDesc, gameRecord.id],
                     sql`, `
                   )
                 ),
@@ -965,10 +962,14 @@ export const chomper = async (
           RETURNING *
         `);
 
-        for (let entity of entities)
-          for (let gameTeamRecord of gameTeamRecords)
-            if (gameTeamRecord.team_index === entity[1].team)
-              entity[1].gameTeamId = gameTeamRecord.id;
+        let gameTeams: number[] = [];
+        for (let gameTeamRecord of gameTeamRecords) {
+          gameTeams[gameTeamRecord.team_index as number] = <number>(
+            gameTeamRecord.id
+          );
+        }
+        for (let [, entity] of entities)
+          entity.gameTeamId = gameTeams[entity.team];
 
         //now the entities
         let gameEntityRecords = await client.many(sql`
@@ -984,39 +985,38 @@ export const chomper = async (
               end_code,
               eliminated,
               end_time,
-              score,
               position,
-              start_time,
+              start_time
             )
           VALUES 
             (
               ${sql.join(
-                [...entities].map((e) =>
+                [...entities].map(([, e]) =>
                   sql.join(
                     [
-                      e[1].ipl_id,
-                      e[1].type,
-                      e[1].desc,
-                      e[1].level,
-                      e[1].category,
-                      e[1].battlesuit,
-                      e[1].gameTeamId,
-                      e[1].endCode,
-                      e[1].eliminated,
-                      e[1].end,
-                      e[1].score,
-                      e[1].position,
-                      e[1].start,
+                      e.ipl_id,
+                      e.type,
+                      e.desc,
+                      e.level,
+                      e.category,
+                      e.battlesuit,
+                      e.gameTeamId,
+                      e.endCode,
+                      e.finalState?.isEliminated ?? null,
+                      e.endTime,
+                      e.position,
+                      e.startTime,
                     ],
                     sql`, `
                   )
                 ),
                 sql`), (`
-              )} 
+              )}
             )
           RETURNING *
         `);
 
+        /*
         for (let gameEntityRecord of gameEntityRecords) {
           entities.get(gameEntityRecord.ipl_id).gameEntityLfstatsId =
             gameEntityRecord.id;
@@ -1056,7 +1056,7 @@ export const chomper = async (
               )}
             )
           `);
-        }
+        }*/
       });
     });
   } catch (error) {
@@ -1072,7 +1072,7 @@ export const chomper = async (
         2
       ),
     };
-  }*/
+  }
 
   return {
     statusCode: 200,
