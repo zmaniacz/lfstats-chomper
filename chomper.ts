@@ -214,55 +214,8 @@ export const chomper = async (
           };
           entities.set(player.ipl_id, player);
         } else if (record[0] === "7") {
-          //;7/sm5-stats	id	shotsHit	shotsFired	timesZapped	timesMissiled	missileHits	nukesDetonated	nukesActivated	nukeCancels	medicHits	ownMedicHits	medicNukes	scoutRapid	lifeBoost	ammoBoost	livesLeft	shotsLeft	penalties	shot3Hit	ownNukeCancels	shotOpponent	shotTeam	missiledOpponent	missiledTeam
-          /*let playerState = currentState.get(record[1]) as EntityState;
-          let player = entities.get(record[1]) as Entity;*/
-          //clean up rapid
-          /*if (playerState.isRapidActive) {
-            playerState.isRapidActive = false;
-            let rapidStatus = player.rapidFires[player.rapidFires.length - 1];
-            rapidStatus.rapidEnd = player.end;
-            rapidStatus.rapidLength =
-              rapidStatus.rapidEnd - rapidStatus.rapidStart;
-          }*/
-          /*player = {
-            accuracy: parseInt(record[2]) / Math.max(parseInt(record[3]), 1),
-            hit_diff: parseInt(record[21]) / Math.max(parseInt(record[4]), 1),
-            sp_earned:
-              parseInt(record[21]) +
-              parseInt(record[23]) * 2 +
-              player.bases_destroyed * 5,
-            sp_spent:
-              parseInt(record[8]) * 20 +
-              parseInt(record[14]) * 10 +
-              parseInt(record[15]) * 15,
-            shotsHit: parseInt(record[2]),
-            shotsFired: parseInt(record[3]),
-            timesZapped: parseInt(record[4]),
-            timesMissiled: parseInt(record[5]),
-            missileHits: parseInt(record[6]),
-            nukesDetonated: parseInt(record[7]),
-            nukesActivated: parseInt(record[8]),
-            nukeCancels: parseInt(record[9]),
-            medicHits: parseInt(record[10]),
-            ownMedicHits: parseInt(record[11]),
-            medicNukes: parseInt(record[12]),
-            scoutRapid: parseInt(record[13]),
-            lifeBoost: parseInt(record[14]),
-            ammoBoost: parseInt(record[15]),
-            livesLeft: parseInt(record[16]),
-            shotsLeft: parseInt(record[17]),
-            penalties: parseInt(record[18]),
-            shot3Hit: parseInt(record[19]),
-            ownNukeCancels: parseInt(record[20]),
-            shotOpponent: parseInt(record[21]),
-            shotTeam: parseInt(record[22]),
-            missiledOpponent: parseInt(record[23]),
-            missiledTeam: parseInt(record[24]),
-            ...player,
-          };*/
-          /*player.finalState = _.cloneDeep(playerState);
-          entities.set(player.ipl_id, player);*/
+          //do nothing for the moment - maybe add some validation later
+          //lol yeah right
         }
       });
       rl.on("error", async () => {
@@ -407,6 +360,9 @@ export const chomper = async (
 
   let stateHistory: EntityState[] = [];
 
+  //Just an absolute shit show of naive code and duplication
+  //However, it makes it clean to see exactly how each action is mutating state
+  //Would be good to some day pull this into separate mutator type functions
   for (let action of actions) {
     let playerState = currentState.get(action.player as string) as EntityState;
     let player = entities.get(action.player as string) as Entity;
@@ -859,15 +815,16 @@ export const chomper = async (
   }
 
   for (let entity of entities.values()) {
-    if (entity.type === "player") {
-      entity.finalState = _.cloneDeep(
-        currentState.get(entity.ipl_id)
-      ) as EntityState;
-      entity.finalState.isFinal = true;
-      if (entity.finalState.isNuking) {
-        entity.finalState.isNuking = false;
-        entity.finalState.ownNukeCanceledByGameEnd += 1;
+    let state = currentState.get(entity.ipl_id);
+    if (state) {
+      state.isFinal = true;
+      if (entity.type === "player") {
+        if (state.isNuking) {
+          state.isNuking = false;
+          state.ownNukeCanceledByGameEnd += 1;
+        }
       }
+      entity.finalState = _.cloneDeep(state);
     }
   }
 
