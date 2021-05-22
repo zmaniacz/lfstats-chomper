@@ -207,12 +207,8 @@ export const chomper = async (
         } else if (record[0] === "6") {
           //;6/entity-end	time	id	type	score
           let player = entities.get(record[2]) as Entity;
-          player = {
-            endTime: parseInt(record[1]),
-            endCode: record[3],
-            ...player,
-          };
-          entities.set(player.ipl_id, player);
+          player.endTime = parseInt(record[1]);
+          player.endCode = record[3];
         } else if (record[0] === "7") {
           //do nothing for the moment - maybe add some validation later
           //lol yeah right
@@ -380,7 +376,7 @@ export const chomper = async (
           ? player.initialShots
           : playerState.shots - 1;
       playerState.shotsFired += 1;
-      if (playerState.isRapidActive) {
+      if (playerState.isRapid) {
         playerState.shotsFiredDuringRapid += 1;
       }
 
@@ -397,7 +393,7 @@ export const chomper = async (
           : playerState.shots - 1;
       playerState.shotsFired += 1;
       playerState.shotsHit += 1;
-      if (playerState.isRapidActive) {
+      if (playerState.isRapid) {
         playerState.shotsFiredDuringRapid += 1;
       }
       if (action.type === "0203") playerState.shotBase += 1;
@@ -433,7 +429,7 @@ export const chomper = async (
         playerState.score += 100;
       }
 
-      if (playerState.isRapidActive) {
+      if (playerState.isRapid) {
         playerState.shotsFiredDuringRapid += 1;
         playerState.shotsHitDuringRapid += 1;
 
@@ -476,7 +472,7 @@ export const chomper = async (
         playerState.score += 100;
       }
 
-      if (playerState.isRapidActive) {
+      if (playerState.isRapid) {
         playerState.shotsFiredDuringRapid += 1;
         playerState.shotsHitDuringRapid += 1;
 
@@ -498,7 +494,7 @@ export const chomper = async (
       ) {
         playerState.shot3Hit += 1;
         playerState.deac3Hit += 1;
-        if (playerState.isRapidActive) {
+        if (playerState.isRapid) {
           playerState.shot3HitDuringRapid += 1;
           playerState.deac3HitDuringRapid += 1;
         }
@@ -509,7 +505,7 @@ export const chomper = async (
           playerState.ownMedicHits += 1;
         } else {
           playerState.medicHits += 1;
-          if (playerState.isRapidActive) {
+          if (playerState.isRapid) {
             playerState.medicHitsDuringRapid += 1;
           }
         }
@@ -529,7 +525,7 @@ export const chomper = async (
       }
       targetState.isActive = false;
       targetState.score -= 20;
-      if (targetState.isRapidActive) {
+      if (targetState.isRapid) {
         targetState.selfDeacDuringRapid += 1;
       }
       if (targetState.isNuking) {
@@ -605,7 +601,7 @@ export const chomper = async (
       }
       targetState.selfDeac += 1;
       targetState.selfMissile += 1;
-      if (targetState.isRapidActive) {
+      if (targetState.isRapid) {
         targetState.selfDeacDuringRapid += 1;
         targetState.selfMissileDuringRapid += 1;
       }
@@ -627,7 +623,7 @@ export const chomper = async (
     //track rapid fire starts
     if (action.type === "0400") {
       playerState.stateTime = action.time;
-      playerState.isRapidActive = true;
+      playerState.isRapid = true;
       playerState.spSpent += 10;
 
       stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
@@ -651,7 +647,11 @@ export const chomper = async (
       for (const [ipl_id, state] of currentState.entries()) {
         let prevState = _.cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
-        if (p.team !== player.team && !state.isEliminated) {
+        if (
+          p.type === "player" &&
+          p.team !== player.team &&
+          !state.isEliminated
+        ) {
           state.stateTime = action.time;
           if (p.position === EntityType.Medic) {
             playerState.nukeMedicHits += Math.min(state.lives, 3);
@@ -739,13 +739,14 @@ export const chomper = async (
         let prevState = _.cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (
+          p.type === "player" &&
           p.team === player.team &&
           state.isActive &&
           p.position !== EntityType.Ammo
         ) {
           state.stateTime = action.time;
           state.shots = Math.min(state.shots + p.resupplyShots, p.maxShots);
-          state.ammoBoostReceieved += 1;
+          state.ammoBoostReceived += 1;
           playerState.ammoBoostedPlayers += 1;
 
           stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
@@ -765,6 +766,7 @@ export const chomper = async (
         let prevState = _.cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (
+          p.type === "player" &&
           p.team === player.team &&
           state.isActive &&
           p.position !== EntityType.Medic
@@ -1016,27 +1018,18 @@ export const chomper = async (
           RETURNING *
         `);
 
-        /*
         for (let gameEntityRecord of gameEntityRecords) {
-          entities.get(gameEntityRecord.ipl_id).gameEntityLfstatsId =
-            gameEntityRecord.id;
-        }
-
-        //explicitly load lfstats ids into the actions object
-        for (let action of actions) {
-          action.playerLfstatsId =
-            entities.get(action.player)?.lfstatsId ?? null;
-          action.targetLfstatsId =
-            entities.get(action.target)?.lfstatsId ?? null;
+          let entity = entities.get(gameEntityRecord.ipl_id as string);
+          if (entity) entity.lfstatsId = gameEntityRecord.id as number;
         }
 
         //insert the actions
-        let chunkSize = 100;
+        let chunkSize = 1000;
         for (let i = 0, len = actions.length; i < len; i += chunkSize) {
           let chunk = actions.slice(i, i + chunkSize);
           await client.query(sql`
             INSERT INTO game_action
-              (action_time, action_type, action_text, actor_id, target_id, game_id) 
+              (action_time, action_type, action_text, actor_game_entity_id, target_game_entity_id, game_id) 
             VALUES (
               ${sql.join(
                 chunk.map((action) =>
@@ -1045,8 +1038,8 @@ export const chomper = async (
                       action.time,
                       action.type,
                       action.action,
-                      entities.get(action.player)?.gameEntityLfstatsId ?? null,
-                      entities.get(action.target)?.gameEntityLfstatsId ?? null,
+                      entities.get(action.player as string)?.lfstatsId ?? null,
+                      entities.get(action.target as string)?.lfstatsId ?? null,
                       gameRecord.id,
                     ],
                     sql`, `
@@ -1056,7 +1049,184 @@ export const chomper = async (
               )}
             )
           `);
-        }*/
+        }
+
+        chunkSize = 100;
+        for (let i = 0, len = actions.length; i < len; i += chunkSize) {
+          let chunk = stateHistory.slice(i, i + chunkSize);
+          //insert the state obejcts
+          await client.query(sql`
+          INSERT INTO game_entity_state
+            (
+              entity_id,
+              state_time,
+              is_final,
+              score,
+              is_active,
+              is_nuking,
+              is_eliminated,
+              lives,
+              shots,
+              current_hp,
+              last_deac_time,
+              last_deac_type,
+              is_rapid,
+              shots_fired,
+              shots_hit,
+              shot_team,
+              deac_team,
+              shot_3hit,
+              deac_3hit,
+              shot_opponent,
+              deac_opponent,
+              shot_base,
+              miss_base,
+              destroy_base,
+              medic_hits,
+              own_medic_hits,
+              self_hit,
+              self_deac,
+              missile_base,
+              missile_team,
+              missile_opponent,
+              missiles_left,
+              self_missile,
+              sp_spent,
+              sp_earned,
+              resupply_shots,
+              self_resupply_shots,
+              self_resupply_lives,
+              resupply_lives,
+              ammo_boosts,
+              life_boosts,
+              ammo_boosted_players,
+              life_boosted_players,
+              rapid_fires,
+              shots_fired_during_rapid,
+              shots_hit_during_rapid,
+              shot_team_during_rapid,
+              deac_team_during_rapid,
+              shot_3hit_during_rapid,
+              deac_3hit_during_rapid,
+              shot_opponent_during_rapid,
+              deac_opponent_during_rapid,
+              medic_hits_during_rapid,
+              self_hit_during_rapid,
+              self_deac_during_rapid,
+              self_missile_during_rapid,
+              nukes_activated,
+              nukes_detonated,
+              nuke_medic_hits,
+              own_nuke_canceled_by_nuke,
+              own_nuke_canceled_by_game_end,
+              own_nuke_canceled_by_team,
+              own_nuke_canceled_by_resupply,
+              own_nuke_canceled_by_opponent,
+              own_nuke_canceled_by_penalty,
+              ammo_boost_received,
+              life_boost_received,
+              cancel_opponent_nuke,
+              cancel_team_nuke,
+              cancel_team_nuke_by_resupply,
+              uptime,
+              resupply_downtime,
+              nuke_downtime,
+              team_deac_downtime,
+              opp_deac_downtime,
+              penalty_downtime,
+              penalties
+            )
+          VALUES (
+            ${sql.join(
+              chunk.map((state) =>
+                sql.join(
+                  [
+                    entities.get(state.ipl_id)?.lfstatsId ?? null,
+                    state.stateTime,
+                    state.isFinal,
+                    state.score,
+                    state.isActive,
+                    state.isNuking,
+                    state.isEliminated,
+                    state.lives,
+                    state.shots,
+                    state.currentHP,
+                    state.lastDeacTime,
+                    state.lastDeacType,
+                    state.isRapid,
+                    state.shotsFired,
+                    state.shotsHit,
+                    state.shotTeam,
+                    state.deacTeam,
+                    state.shot3Hit,
+                    state.deac3Hit,
+                    state.shotOpponent,
+                    state.deacOpponent,
+                    state.shotBase,
+                    state.missBase,
+                    state.destroyBase,
+                    state.medicHits,
+                    state.ownMedicHits,
+                    state.selfHit,
+                    state.selfDeac,
+                    state.missileBase,
+                    state.missileTeam,
+                    state.missileOpponent,
+                    state.missilesLeft,
+                    state.selfMissile,
+                    state.spSpent,
+                    state.spEarned,
+                    state.resupplyShots,
+                    state.selfResupplyShots,
+                    state.selfResupplyLives,
+                    state.resupplyLives,
+                    state.ammoBoosts,
+                    state.lifeBoosts,
+                    state.ammoBoostedPlayers,
+                    state.lifeBoostedPlayers,
+                    state.rapidFires,
+                    state.shotsFiredDuringRapid,
+                    state.shotsHitDuringRapid,
+                    state.shotTeamDuringRapid,
+                    state.deacTeamDuringRapid,
+                    state.shot3HitDuringRapid,
+                    state.deac3HitDuringRapid,
+                    state.shotOpponentDuringRapid,
+                    state.deacOpponentDuringRapid,
+                    state.medicHitsDuringRapid,
+                    state.selfHitDuringRapid,
+                    state.selfDeacDuringRapid,
+                    state.selfMissileDuringRapid,
+                    state.nukesActivated,
+                    state.nukesDetonated,
+                    state.nukeMedicHits,
+                    state.ownNukeCanceledByNuke,
+                    state.ownNukeCanceledByGameEnd,
+                    state.ownNukeCanceledByTeam,
+                    state.ownNukeCanceledByResupply,
+                    state.ownNukeCanceledByOpponent,
+                    state.ownNukeCanceledByPenalty,
+                    state.ammoBoostReceived,
+                    state.lifeBoostReceived,
+                    state.cancelOpponentNuke,
+                    state.cancelTeamNuke,
+                    state.cancelTeamNukeByResupply,
+                    state.uptime,
+                    state.resupplyDowntime,
+                    state.nukeDowntime,
+                    state.teamDeacDowntime,
+                    state.oppDeacDowntime,
+                    state.penaltyDowntime,
+                    state.penalties,
+                  ],
+                  sql`, `
+                )
+              ),
+              sql`), (`
+            )}
+          )
+        `);
+        }
       });
     });
   } catch (error) {

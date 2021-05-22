@@ -3,11 +3,11 @@ interface lfstats {
 }
 
 export enum DeacType {
-  Resupply = "RESUPPLY",
-  Nuke = "NUKE",
-  Opponent = "OPPONENT",
-  Team = "TEAM",
-  Penalty = "PENALTY",
+  Resupply = "resupply",
+  Nuke = "nuke",
+  Opponent = "opponent",
+  Team = "team",
+  Penalty = "penalty",
 }
 
 export enum EntityType {
@@ -88,7 +88,7 @@ export interface EntityState {
   currentHP: number; //curent HP total
   lastDeacTime: number | null; //timestamp of the alst deac
   lastDeacType: DeacType | null; //type of last deac
-  isRapidActive: boolean; //is the entity currently in rapid
+  isRapid: boolean; //is the entity currently in rapid
   shotsFired: number; //total shots fired
   shotsHit: number; //total shots that hit anything
   shotTeam: number; //total shots that hit the same team
@@ -141,7 +141,7 @@ export interface EntityState {
   ownNukeCanceledByResupply: number;
   ownNukeCanceledByOpponent: number;
   ownNukeCanceledByPenalty: number;
-  ammoBoostReceieved: number;
+  ammoBoostReceived: number;
   lifeBoostReceived: number;
   cancelOpponentNuke: number;
   cancelTeamNuke: number;
