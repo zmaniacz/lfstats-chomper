@@ -1054,7 +1054,7 @@ export const chomper = async (
           `);
         }
 
-        chunkSize = 100;
+        chunkSize = 500;
         for (let i = 0, len = stateHistory.length; i < len; i += chunkSize) {
           let chunk = stateHistory.slice(i, i + chunkSize);
           //insert the state obejcts
