@@ -275,16 +275,22 @@ export const chomper = async (
   //for any deac event, set or update the target's last deac time
   //a nuke resets it for all opposing team players
   for (let action of actions) {
+    console.log(action);
     if (
       action.type === "0206" ||
       action.type === "0306" ||
       action.type === "0500" ||
-      action.type === "0502" ||
-      action.type === "0600"
+      action.type === "0502"
     ) {
       let t = tempStates.get(action.target as string);
       t.lastDeacTime = action.time;
       tempStates.set(action.target as string, t);
+    }
+    //penalties are different beacause reasons
+    if (action.type === "0600") {
+      let t = tempStates.get(action.player as string);
+      t.lastDeacTime = action.time;
+      tempStates.set(action.player as string, t);
     }
     if (action.type === "0405") {
       //nuke
@@ -788,9 +794,9 @@ export const chomper = async (
       playerState.stateTime = action.time;
       playerState.isActive = false;
       playerState.penalties += 1;
-      if (targetState.isNuking) {
-        targetState.isNuking = false;
-        targetState.ownNukeCanceledByPenalty += 1;
+      if (playerState.isNuking) {
+        playerState.isNuking = false;
+        playerState.ownNukeCanceledByPenalty += 1;
       }
 
       stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
@@ -988,7 +994,8 @@ export const chomper = async (
               eliminated,
               end_time,
               position,
-              start_time
+              start_time,
+              player_id
             )
           VALUES 
             (
@@ -1008,6 +1015,7 @@ export const chomper = async (
                       e.endTime,
                       e.position,
                       e.startTime,
+                      e.lfstatsId,
                     ],
                     sql`, `
                   )
