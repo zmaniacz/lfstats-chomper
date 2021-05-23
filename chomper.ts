@@ -33,6 +33,7 @@ export const chomper = async (
 ): Promise<APIGatewayProxyResult> => {
   const chomperVersion = "2.0.0";
   const tdfId = event.queryStringParameters?.tdfId;
+  let gameId: number = 0;
   const interceptors = [createQueryLoggingInterceptor()];
   if (!tdfId) {
     return {
@@ -941,6 +942,7 @@ export const chomper = async (
               )
             RETURNING *
           `);
+        gameId = gameRecord.id as number;
 
         //on to the teams
         let gameTeamRecords = await client.many(sql`
@@ -1252,7 +1254,7 @@ export const chomper = async (
     body: JSON.stringify(
       {
         message: `${tdfId} chomped successfully`,
-        stateHistory,
+        game_id: gameId,
       },
       replacer,
       2
