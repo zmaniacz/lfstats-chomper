@@ -275,7 +275,6 @@ export const chomper = async (
   //for any deac event, set or update the target's last deac time
   //a nuke resets it for all opposing team players
   for (let action of actions) {
-    console.log(action);
     if (
       action.type === "0206" ||
       action.type === "0306" ||
@@ -822,17 +821,15 @@ export const chomper = async (
     action.state = _.cloneDeep(currentState);
   }
 
-  for (let entity of entities.values()) {
-    let state = currentState.get(entity.ipl_id);
-    if (state) {
-      state.isFinal = true;
-      if (entity.type === "player") {
-        if (state.isNuking) {
-          state.isNuking = false;
-          state.ownNukeCanceledByGameEnd += 1;
-        }
+  for (let [, state] of currentState) {
+    let entity = entities.get(state.ipl_id);
+    state.isFinal = true;
+    if (entity && entity.type === "player") {
+      if (state.isNuking) {
+        state.isNuking = false;
+        state.ownNukeCanceledByGameEnd += 1;
       }
-      entity.finalState = _.cloneDeep(state);
+      stateHistory.push(_.cloneDeep(state));
     }
   }
 
@@ -991,7 +988,6 @@ export const chomper = async (
               battlesuit,
               game_team_id,
               end_code,
-              eliminated,
               end_time,
               position,
               start_time,
@@ -1011,7 +1007,6 @@ export const chomper = async (
                       e.battlesuit,
                       e.gameTeamId,
                       e.endCode,
-                      e.finalState?.isEliminated ?? null,
                       e.endTime,
                       e.position,
                       e.startTime,
@@ -1060,7 +1055,7 @@ export const chomper = async (
         }
 
         chunkSize = 100;
-        for (let i = 0, len = actions.length; i < len; i += chunkSize) {
+        for (let i = 0, len = stateHistory.length; i < len; i += chunkSize) {
           let chunk = stateHistory.slice(i, i + chunkSize);
           //insert the state obejcts
           await client.query(sql`
