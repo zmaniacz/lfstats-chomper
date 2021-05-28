@@ -1074,7 +1074,7 @@ export async function handler(event, context) {
 
             if (nukes.all_nukes_canceled > 0) {
               mvpDetails.ownNukesCanceled.value +=
-                nukes.all_nukes_canceled * -3;
+                nukes.all_nukes_canceled * -1;
             }
           }
 
