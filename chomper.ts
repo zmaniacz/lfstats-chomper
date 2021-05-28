@@ -532,6 +532,7 @@ export const chomper = async (
       targetState.isActive = false;
       targetState.score -= 20;
       if (targetState.isRapid) {
+        targetState.selfHitDuringRapid += 1;
         targetState.selfDeacDuringRapid += 1;
       }
       if (targetState.isNuking) {
