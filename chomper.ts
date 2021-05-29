@@ -630,6 +630,7 @@ export const chomper = async (
     //track rapid fire starts
     if (action.type === "0400") {
       playerState.stateTime = action.time;
+      playerState.rapidFires += 1;
       playerState.isRapid = true;
       playerState.spSpent += 10;
 
