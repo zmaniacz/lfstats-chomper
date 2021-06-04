@@ -24,6 +24,7 @@ import {
   defaultInitialState,
   entityTypes,
   positionDefaults,
+  UIColors,
 } from "./constants";
 import * as _ from "lodash";
 import { createPool, sql } from "slonik";
@@ -138,6 +139,7 @@ export const chomper = async (
             desc: record[2],
             colorEnum: parseInt(record[3]),
             colorDesc: record[4],
+            uiColor: UIColors[parseInt(record[3])],
             lfstatsId: null,
           } as Team;
           teams.set(team.index, team);
@@ -954,6 +956,7 @@ export const chomper = async (
               team_desc,
               color_enum,
               color_desc,
+              ui_color,
               game_id
             )
           VALUES
@@ -961,7 +964,14 @@ export const chomper = async (
               ${sql.join(
                 [...teams].map(([, t]) =>
                   sql.join(
-                    [t.index, t.desc, t.colorEnum, t.colorDesc, gameRecord.id],
+                    [
+                      t.index,
+                      t.desc,
+                      t.colorEnum,
+                      t.colorDesc,
+                      t.uiColor,
+                      gameRecord.id,
+                    ],
                     sql`, `
                   )
                 ),

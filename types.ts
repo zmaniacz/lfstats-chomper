@@ -44,6 +44,7 @@ export interface Team extends lfstats {
   desc: string;
   colorEnum: number;
   colorDesc: string;
+  uiColor: string;
 }
 
 export interface Entity extends lfstats, EntityDefault {
