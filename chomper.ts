@@ -1294,7 +1294,7 @@ function calcUptime(state: EntityState, prevState: EntityState) {
     state.uptime += timeDelta;
   } else {
     //Player was offline so time delta goes to whatever the last deac event was
-    switch (state.lastDeacType) {
+    switch (prevState.lastDeacType) {
       case DeacType.Nuke:
         state.nukeDowntime += timeDelta;
         break;
