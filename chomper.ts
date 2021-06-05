@@ -278,6 +278,24 @@ export const chomper = async (
   //for any deac event, set or update the target's last deac time
   //a nuke resets it for all opposing team players
   for (let action of actions) {
+    for (let [IplId, state] of tempStates) {
+      if (
+        state.lastDeacTime &&
+        state.lastDeacTime + 8000 <= action.time &&
+        action.time < state.endTime
+      ) {
+        reacActions.push({
+          time: state.lastDeacTime + 8000,
+          type: "LFS001",
+          action: " reactivated",
+          player: IplId,
+          target: null,
+          state: null,
+        });
+        state.lastDeacTime = null;
+        tempStates.set(IplId, state);
+      }
+    }
     if (
       action.type === "0206" ||
       action.type === "0306" ||
@@ -303,24 +321,6 @@ export const chomper = async (
           t.lastDeacTime = action.time;
           tempStates.set(IplId as string, t);
         }
-      }
-    }
-    for (let [IplId, state] of tempStates) {
-      if (
-        state.lastDeacTime &&
-        state.lastDeacTime + 8000 <= action.time &&
-        action.time < state.endTime
-      ) {
-        reacActions.push({
-          time: state.lastDeacTime + 8000,
-          type: "LFS001",
-          action: " reactivated",
-          player: IplId,
-          target: null,
-          state: null,
-        });
-        state.lastDeacTime = null;
-        tempStates.set(IplId, state);
       }
     }
   }
@@ -829,14 +829,16 @@ export const chomper = async (
   }
 
   for (let [, state] of currentState) {
-    let entity = entities.get(state.ipl_id);
+    let prevState = _.cloneDeep(state);
+    let entity = entities.get(state.ipl_id) as Entity;
+    state.stateTime = entity.endTime as number;
     state.isFinal = true;
     if (entity && entity.type === "player") {
       if (state.isNuking) {
         state.isNuking = false;
         state.ownNukeCanceledByGameEnd += 1;
       }
-      stateHistory.push(_.cloneDeep(state));
+      stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
     }
   }
 
