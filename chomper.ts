@@ -688,6 +688,7 @@ export const chomper = async (
     if (action.type === "0500") {
       playerState.stateTime = action.time;
       playerState.shotsFired += 1;
+      playerState.shotsHit += 1;
       playerState.resupplyShots += 1;
 
       targetState.stateTime = action.time;
@@ -715,6 +716,7 @@ export const chomper = async (
     if (action.type === "0502") {
       playerState.stateTime = action.time;
       playerState.shotsFired += 1;
+      playerState.shotsHit += 1;
       playerState.resupplyLives += 1;
 
       targetState.stateTime = action.time;

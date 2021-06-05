@@ -70,6 +70,8 @@ functions:
           existing: true
 
 custom:
+  serverless-offline:
+    httpPort: 4000
   bundle:
     ignorePackages:
       - pg-native
