@@ -98,6 +98,7 @@ export interface EntityState {
   deac3Hit: number; //total times an opposing 3 hit was deactivated
   shotOpponent: number; //total times an opponent was shot
   deacOpponent: number; //total times an opponent was deactivated
+  assists: number; //total assists against opponents
   shotBase: number; //total times abses or gens were shot
   missBase: number; // total misses agianst a base
   destroyBase: number; //total times bases org ens were destroyed
@@ -129,6 +130,7 @@ export interface EntityState {
   deac3HitDuringRapid: number;
   shotOpponentDuringRapid: number;
   deacOpponentDuringRapid: number;
+  assistsDuringRapid: number;
   medicHitsDuringRapid: number;
   selfHitDuringRapid: number;
   selfDeacDuringRapid: number;

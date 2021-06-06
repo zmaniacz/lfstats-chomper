@@ -330,6 +330,75 @@ export const chomper = async (
     return a.time - b.time;
   });
 
+  //now let's see about inserting assists
+  //create a new map of entities to track the last time they were tagged
+  //but onyl need to include heavies and commanders
+  let assistCandidates = new Map<string, any>();
+  let assistActions: GameAction[] = [];
+  for (let entity of entities.values()) {
+    if (
+      entity.position === EntityType.Commander ||
+      entity.position === EntityType.Heavy
+    ) {
+      assistCandidates.set(entity.ipl_id, {
+        assists: [] as GameAction[],
+      });
+    }
+  }
+
+  //iterate through actions and look for 0205 events acted by the opposing team
+  //when we find one set the last tag time
+  //then for any 0206 events
+  for (let action of actions) {
+    if (action.type === "0205") {
+      let player = entities.get(action.player as string) as Entity;
+      let target = entities.get(action.target as string) as Entity;
+      if (player.team !== target.team) {
+        //possible assist!
+        let assist: GameAction = {
+          time: action.time,
+          type: "LFS003",
+          action: " assists vs ",
+          player: player.ipl_id,
+          target: target.ipl_id,
+          state: null,
+        };
+        //have to avoid duplicate assists
+        let unique = true;
+        for (let existingAssist of assistCandidates.get(target.ipl_id)
+          .assists) {
+          if (assist.player === existingAssist.player) {
+            unique = false;
+            break;
+          }
+        }
+        if (unique) assistCandidates.get(target.ipl_id).assists.push(assist);
+      }
+    }
+
+    if (action.type === "0206") {
+      let target = entities.get(action.target as string) as Entity;
+      let assists = assistCandidates.get(target.ipl_id)?.assists ?? null;
+      if (assists) {
+        while (assists.length) {
+          let assist = assists.pop();
+          if (
+            action.player !== assist.player &&
+            action.time - assist.time <= 4000
+          ) {
+            //the potential assist is within 4 seconds!
+            assist.time = action.time;
+            assistActions.push(assist);
+          }
+        }
+      }
+    }
+  }
+  actions = [...actions, ...assistActions];
+  actions.sort((a, b) => {
+    return a.time - b.time;
+  });
+
   //now the fun of state application begins
   // EventMissionStart 0100
   // EventMissionEnd 0101
@@ -825,6 +894,18 @@ export const chomper = async (
       stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
+    // EventAssist LFS003
+    if (action.type === "LFS003") {
+      playerState.stateTime = action.time;
+      playerState.assists += 1;
+
+      if (playerState.isRapid) {
+        playerState.assistsDuringRapid += 1;
+      }
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+    }
+
     action.state = _.cloneDeep(currentState);
   }
 
@@ -1100,6 +1181,7 @@ export const chomper = async (
               deac_3hit,
               shot_opponent,
               deac_opponent,
+              assists,
               shot_base,
               miss_base,
               destroy_base,
@@ -1131,6 +1213,7 @@ export const chomper = async (
               deac_3hit_during_rapid,
               shot_opponent_during_rapid,
               deac_opponent_during_rapid,
+              assists_during_rapid,
               medic_hits_during_rapid,
               self_hit_during_rapid,
               self_deac_during_rapid,
@@ -1183,6 +1266,7 @@ export const chomper = async (
                     state.deac3Hit,
                     state.shotOpponent,
                     state.deacOpponent,
+                    state.assists,
                     state.shotBase,
                     state.missBase,
                     state.destroyBase,
@@ -1214,6 +1298,7 @@ export const chomper = async (
                     state.deac3HitDuringRapid,
                     state.shotOpponentDuringRapid,
                     state.deacOpponentDuringRapid,
+                    state.assistsDuringRapid,
                     state.medicHitsDuringRapid,
                     state.selfHitDuringRapid,
                     state.selfDeacDuringRapid,
