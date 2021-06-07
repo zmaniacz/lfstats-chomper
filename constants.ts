@@ -111,6 +111,7 @@ export const defaultInitialState: EntityState = {
   shotBase: 0,
   missBase: 0,
   destroyBase: 0,
+  awardBase: 0,
   medicHits: 0,
   ownMedicHits: 0,
   selfHit: 0,

@@ -102,6 +102,7 @@ export interface EntityState {
   shotBase: number; //total times abses or gens were shot
   missBase: number; // total misses agianst a base
   destroyBase: number; //total times bases org ens were destroyed
+  awardBase: number; // number of bases awarded at end of game
   medicHits: number; //total times the opposing medic was hit
   ownMedicHits: number; //total times a teammate medic was hit
   selfHit: number; //total times the player was hit form any source

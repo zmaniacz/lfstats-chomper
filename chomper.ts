@@ -430,6 +430,7 @@ export const chomper = async (
   // EventResupplyTeamLives 0512
   // EventPenalty 0600
   // EventAchieve 0900
+  // EventBaseAwarded 0B03
 
   let stateHistory: EntityState[] = [];
 
@@ -637,6 +638,15 @@ export const chomper = async (
       playerState.missileBase += 1;
       playerState.score += 1001;
       playerState.spEarned += 5;
+
+      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+    }
+
+    // EventMslGenDestroy 0B03
+    if (action.type === "0B03") {
+      playerState.stateTime = action.time;
+      playerState.awardBase += 1;
+      playerState.score += 1001;
 
       stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
@@ -1185,6 +1195,7 @@ export const chomper = async (
               shot_base,
               miss_base,
               destroy_base,
+              award_base,
               medic_hits,
               own_medic_hits,
               self_hit,
@@ -1270,6 +1281,7 @@ export const chomper = async (
                     state.shotBase,
                     state.missBase,
                     state.destroyBase,
+                    state.awardBase,
                     state.medicHits,
                     state.ownMedicHits,
                     state.selfHit,
