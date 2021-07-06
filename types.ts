@@ -45,6 +45,9 @@ export interface Team extends lfstats {
   colorEnum: number;
   colorDesc: string;
   uiColor: string;
+  isEliminated: boolean;
+  oppEliminated: boolean;
+  elimBonus: number;
 }
 
 export interface Entity extends lfstats, EntityDefault {

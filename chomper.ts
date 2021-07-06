@@ -141,6 +141,9 @@ export const chomper = async (
             colorDesc: record[4],
             uiColor: UIColors[parseInt(record[3])],
             lfstatsId: null,
+            isEliminated: false,
+            oppEliminated: false,
+            elimBonus: 0,
           } as Team;
           teams.set(team.index, team);
         } else if (record[0] === "3") {
@@ -256,6 +259,27 @@ export const chomper = async (
     }
   }
   actions = [...actions, ...elimActions];
+
+  //set team elim states
+  for (let team of teams.values()) {
+    if (team.colorEnum !== 0) {
+      team.isEliminated = [...entities]
+        .filter(
+          ([, entity]) => entity.team === team.index && entity.type === "player"
+        )
+        .every(([, entity]) => entity.endCode === "04");
+    }
+  }
+
+  //set opp elim sates and bonus
+  for (let team of teams.values()) {
+    if (team.colorEnum !== 0) {
+      team.oppEliminated = [...teams]
+        .filter(([, t]) => t.index !== team.index && t.colorEnum !== 0)
+        .every(([, t]) => t.isEliminated);
+      if (team.oppEliminated) team.elimBonus = 10000;
+    }
+  }
 
   //make sure our actions array is in time slice order
   actions.sort((a, b) => {
@@ -919,6 +943,7 @@ export const chomper = async (
     action.state = _.cloneDeep(currentState);
   }
 
+  //set final states
   for (let [, state] of currentState) {
     let prevState = _.cloneDeep(state);
     let entity = entities.get(state.ipl_id) as Entity;
@@ -1052,6 +1077,9 @@ export const chomper = async (
               color_enum,
               color_desc,
               ui_color,
+              is_eliminated,
+              opp_eliminated,
+              elim_bonus,
               game_id
             )
           VALUES
@@ -1065,6 +1093,9 @@ export const chomper = async (
                       t.colorEnum,
                       t.colorDesc,
                       t.uiColor,
+                      t.isEliminated,
+                      t.oppEliminated,
+                      t.elimBonus,
                       gameRecord.id,
                     ],
                     sql`, `
