@@ -117,9 +117,9 @@ export async function handler(event, context) {
             //normalize the team colors to either red or green because reasons
             let normalTeam = "";
             if (
-              record[4] == "Fire" ||
-              record[4] == "Red" ||
-              record[4] == "Solid Red"
+              record[4] === "Fire" ||
+              record[4] === "Red" ||
+              record[4] === "Solid Red"
             ) {
               normalTeam = "red";
             } else {
