@@ -116,14 +116,16 @@ export async function handler(event, context) {
             //;2/team	index	desc	colour-enum	colour-desc
             //normalize the team colors to either red or green because reasons
             let normalTeam = "";
-            if (
-              record[4] === "Fire" ||
-              record[4] === "Red" ||
-              record[4] === "Solid Red"
-            ) {
-              normalTeam = "red";
-            } else {
-              normalTeam = "green";
+            if (record[3] != 0) {
+              if (
+                record[4] === "Fire" ||
+                record[4] === "Red" ||
+                record[4] === "Solid Red"
+              ) {
+                normalTeam = "red";
+              } else {
+                normalTeam = "green";
+              }
             }
 
             let team = {
