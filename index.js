@@ -904,7 +904,7 @@ export async function handler(event, context) {
                 //fix the player's score
                 await client.query(sql`
                   UPDATE scorecards
-                  SET score=score+${penTotal}
+                  SET score=score+${penTotal * -1}
                   WHERE id=${player.scorecard_id}
                 `);
               }
