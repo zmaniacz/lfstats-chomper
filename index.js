@@ -890,7 +890,9 @@ export async function handler(event, context) {
                 }
               } else {
                 //we're in the new model and everything is better
+                let penTotal = 0;
                 for (let i = 0; i < player.penalties; i++) {
+                  penTotal += game.penaltyValue;
                   await client.query(sql`
                     INSERT INTO penalties
                       (value, scorecard_id)
@@ -898,6 +900,13 @@ export async function handler(event, context) {
                       (${game.penaltyValue}, ${player.scorecard_id})
                   `);
                 }
+
+                //fix the player's score
+                await client.query(sql`
+                  UPDATE scorecards
+                  SET score=score+${penTotal}
+                  WHERE id=${player.scorecard_id}
+                `);
               }
             }
           }
