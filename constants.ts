@@ -17,6 +17,8 @@ export const UIColors: { [index: number]: string } = {
   [13]: "green", //Earth
   [14]: "cyan", //Crystal
   [15]: "orange", //Rainbow
+  [17]: "red", //Solid Red
+  [18]: "blue", //Solid Blue
 };
 
 export const entityTypes: { [index: number]: EntityType } = {
