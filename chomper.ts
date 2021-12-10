@@ -28,6 +28,7 @@ import {
 } from "./constants";
 import * as _ from "lodash";
 import { createPool, sql } from "slonik";
+import { AnyLengthString } from "aws-sdk/clients/comprehend";
 
 export const chomper = async (
   event: APIGatewayEvent
@@ -62,7 +63,7 @@ export const chomper = async (
       let secret = JSON.parse(SecretString);
       connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf`;
     } else throw "secret error";
-  } catch (error) {
+  } catch (error: any) {
     return {
       statusCode: 502,
       body: JSON.stringify(
@@ -228,7 +229,7 @@ export const chomper = async (
       });
       await once(rl, "close");
     }
-  } catch (error) {
+  } catch (error: any) {
     console.log("CHOMP: READ ERROR");
     const { requestId, cfId, extendedRequestId } = error.$metadata;
     console.log({ requestId, cfId, extendedRequestId });
@@ -1378,7 +1379,7 @@ export const chomper = async (
         }
       });
     });
-  } catch (error) {
+  } catch (error: any) {
     console.log("CHOMP2: DB ERROR");
     console.log(error.stack);
     return {
