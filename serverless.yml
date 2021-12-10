@@ -55,6 +55,10 @@ functions:
     handler: chomper.chomper
     events:
       - httpApi: "GET /chomper"
+  chomperNext:
+    handler: chomper-next.chomper
+    events:
+      - httpApi: "GET /chomper-next"
   chomper:
     handler: index.handler
     environment:

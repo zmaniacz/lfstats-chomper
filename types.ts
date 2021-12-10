@@ -18,6 +18,13 @@ export enum EntityType {
   Medic = "Medic",
 }
 
+export interface Center {
+  id: number;
+  name: string;
+  region_code: number;
+  site_code: number;
+}
+
 export interface Game extends lfstats {
   missionType: string;
   missionDesc: string;
