@@ -1,3 +1,5 @@
+import { float } from "aws-sdk/clients/lightsail";
+
 interface lfstats {
   lfstatsId: number | null;
 }
@@ -87,52 +89,52 @@ export interface EntityDefault {
 }
 
 export interface EntityState {
-  stateTime: number; //timestamp for the state
-  isFinal: boolean; //boolean to idnicate if this is the entity's final state at game end
-  iplId: string; //iplaylaserforce id string
-  score: number; //score
-  isActive: boolean; //is the entity currently activated
-  isNuking: boolean; //is the entity currently nuking
-  isEliminated: boolean; //has the entity been eliminated prior to game end
-  lives: number; //curent lives total
-  shots: number; //current shots total
-  currentHP: number; //curent HP total
-  lastDeacTime: number | null; //timestamp of the alst deac
-  lastDeacType: DeacType | null; //type of last deac
-  isRapid: boolean; //is the entity currently in rapid
-  shotsFired: number; //total shots fired
-  shotsHit: number; //total shots that hit anything
-  shotTeam: number; //total shots that hit the same team
-  deacTeam: number; //total times a team mate was deactivated
-  shot3Hit: number; //total times an opposing 3 hit was shot
-  deac3Hit: number; //total times an opposing 3 hit was deactivated
-  shotOpponent: number; //total times an opponent was shot
-  deacOpponent: number; //total times an opponent was deactivated
-  assists: number; //total assists against opponents
-  shotBase: number; //total times abses or gens were shot
-  missBase: number; // total misses agianst a base
-  destroyBase: number; //total times bases org ens were destroyed
-  awardBase: number; // number of bases awarded at end of game
-  medicHits: number; //total times the opposing medic was hit
-  ownMedicHits: number; //total times a teammate medic was hit
-  selfHit: number; //total times the player was hit form any source
-  selfDeac: number; //total times the payer was deactivated form any source
-  missileBase: number; //total times a base or gen was missiled
-  missileTeam: number; //total times a teammate was missiled
-  missileOpponent: number; //total time an oppionent was misisled
-  missilesLeft: number; //current missiles remaining
-  selfMissile: number; //total times player was missiled
-  spSpent: number; //total special points spent
-  spEarned: number; //total special points eanred
-  resupplyShots: number; //number of shot resupplies provided
-  selfResupplyShots: number; //number of shots resupplies received
-  selfResupplyLives: number; //number of lives resupplies received
-  resupplyLives: number; //number of life resupplies priovided
-  ammoBoosts: number; //total ammo boosts pulled
-  lifeBoosts: number; //total life boosts pulled
-  ammoBoostedPlayers: number; //total players that received an ammo boost form this player
-  lifeBoostedPlayers: number; //total players that received a life boost form this player
-  rapidFires: number; //total rapid fires activated
+  stateTime: number;
+  isFinal: boolean;
+  iplId: string;
+  score: number;
+  isActive: boolean;
+  isNuking: boolean;
+  isEliminated: boolean;
+  lives: number;
+  shots: number;
+  currentHP: number;
+  lastDeacTime: number | null;
+  lastDeacType: DeacType | null;
+  isRapid: boolean;
+  shotsFired: number;
+  shotsHit: number;
+  shotTeam: number;
+  deacTeam: number;
+  shot3Hit: number;
+  deac3Hit: number;
+  shotOpponent: number;
+  deacOpponent: number;
+  assists: number;
+  shotBase: number;
+  missBase: number;
+  destroyBase: number;
+  awardBase: number;
+  medicHits: number;
+  ownMedicHits: number;
+  selfHit: number;
+  selfDeac: number;
+  missileBase: number;
+  missileTeam: number;
+  missileOpponent: number;
+  missilesLeft: number;
+  selfMissile: number;
+  spSpent: number;
+  spEarned: number;
+  resupplyShots: number;
+  selfResupplyShots: number;
+  selfResupplyLives: number;
+  resupplyLives: number;
+  ammoBoosts: number;
+  lifeBoosts: number;
+  ammoBoostedPlayers: number;
+  lifeBoostedPlayers: number;
+  rapidFires: number;
   shotsFiredDuringRapid: number;
   shotsHitDuringRapid: number;
   shotTeamDuringRapid: number;
@@ -167,6 +169,29 @@ export interface EntityState {
   oppDeacDowntime: number;
   penaltyDowntime: number;
   penalties: number;
+}
+
+export interface EntityMVP
+  extends Omit<
+    EntityState,
+    | "stateTime"
+    | "isFinal"
+    | "iplId"
+    | "isActive"
+    | "isNuking"
+    | "isEliminated"
+    | "currentHP"
+    | "lastDeacTime"
+    | "lastDeacType"
+    | "isRapid"
+  > {
+  position: string;
+  scoreThreshold: number;
+  accuracy: number;
+  accuracyDuringRapid: number;
+  hitDiff: number;
+  hitDiffDuringRapid: number;
+  isEliminated: number;
 }
 
 export interface GameAction {
