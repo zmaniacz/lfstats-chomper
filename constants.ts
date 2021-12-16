@@ -89,7 +89,7 @@ export const positionDefaults: { [index: string]: EntityDefault } = {
 
 export const defaultInitialState: EntityState = {
   stateTime: 0,
-  ipl_id: "",
+  iplId: "",
   lives: 0,
   shots: 0,
   currentHP: 0,
