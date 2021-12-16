@@ -154,7 +154,7 @@ export const chomper = async (
           let position = entityTypes[parseInt(record[7])] ?? null;
           let entity = {
             startTime: parseInt(record[1]),
-            ipl_id: record[2],
+            iplId: record[2],
             type: record[3],
             desc: record[4],
             team: parseInt(record[5]),
@@ -170,14 +170,14 @@ export const chomper = async (
           } as Entity;
 
           //set up initial numbers based on the entity type
-          entity.initialState.ipl_id = entity.ipl_id;
+          entity.initialState.iplId = entity.iplId;
           entity.initialState.shots = entity.initialShots ?? 0;
           entity.initialState.lives = entity.initialLives ?? 0;
           entity.initialState.missilesLeft = entity.initialMissiles ?? 0;
           entity.initialState.currentHP = entity.maxHP ?? 0;
 
-          entities.set(entity.ipl_id, entity);
-          currentState.set(entity.ipl_id, { ...entity.initialState });
+          entities.set(entity.iplId, entity);
+          currentState.set(entity.iplId, { ...entity.initialState });
         } else if (record[0] === "4") {
           //;4/event	time	type	varies
           let action: GameAction = {
@@ -256,7 +256,7 @@ export const chomper = async (
         time: entity.endTime as number,
         type: "LFS002",
         action: " eliminated",
-        player: entity.ipl_id,
+        player: entity.iplId,
         target: null,
         state: null,
       });
@@ -296,7 +296,7 @@ export const chomper = async (
   let tempStates = new Map<string, any>();
   for (let entity of entities.values()) {
     if (entity.type === "player") {
-      tempStates.set(entity.ipl_id, {
+      tempStates.set(entity.iplId, {
         lastDeacTime: null,
         endTime: entity.endTime,
       });
@@ -368,7 +368,7 @@ export const chomper = async (
       entity.position === EntityType.Commander ||
       entity.position === EntityType.Heavy
     ) {
-      assistCandidates.set(entity.ipl_id, {
+      assistCandidates.set(entity.iplId, {
         assists: [] as GameAction[],
       });
     }
@@ -387,26 +387,25 @@ export const chomper = async (
           time: action.time,
           type: "LFS003",
           action: " assists vs ",
-          player: player.ipl_id,
-          target: target.ipl_id,
+          player: player.iplId,
+          target: target.iplId,
           state: null,
         };
         //have to avoid duplicate assists
         let unique = true;
-        for (let existingAssist of assistCandidates.get(target.ipl_id)
-          .assists) {
+        for (let existingAssist of assistCandidates.get(target.iplId).assists) {
           if (assist.player === existingAssist.player) {
             unique = false;
             break;
           }
         }
-        if (unique) assistCandidates.get(target.ipl_id).assists.push(assist);
+        if (unique) assistCandidates.get(target.iplId).assists.push(assist);
       }
     }
 
     if (action.type === "0206") {
       let target = entities.get(action.target as string) as Entity;
-      let assists = assistCandidates.get(target.ipl_id)?.assists ?? null;
+      let assists = assistCandidates.get(target.iplId)?.assists ?? null;
       if (assists) {
         while (assists.length) {
           let assist = assists.pop();
@@ -955,7 +954,7 @@ export const chomper = async (
   //set final states
   for (let [, state] of currentState) {
     let prevState = _.cloneDeep(state);
-    let entity = entities.get(state.ipl_id) as Entity;
+    let entity = entities.get(state.iplId) as Entity;
     state.stateTime = entity.endTime as number;
     state.isFinal = true;
     if (entity && entity.type === "player") {
@@ -997,7 +996,7 @@ export const chomper = async (
               [...entities]
                 .filter(([, e]) => e.type === "player")
                 .sort()
-                .map(([, e]) => sql.join([e.ipl_id, e.desc], sql`, `)),
+                .map(([, e]) => sql.join([e.iplId, e.desc], sql`, `)),
               sql`), (`
             )}
           )
@@ -1156,7 +1155,7 @@ export const chomper = async (
                 [...entities].map(([, e]) =>
                   sql.join(
                     [
-                      e.ipl_id,
+                      e.iplId,
                       e.type,
                       e.desc,
                       e.level,
@@ -1308,7 +1307,7 @@ export const chomper = async (
               chunk.map((state) =>
                 sql.join(
                   [
-                    entities.get(state.ipl_id)?.lfstatsId ?? null,
+                    entities.get(state.iplId)?.lfstatsId ?? null,
                     state.stateTime,
                     state.isFinal,
                     state.score,

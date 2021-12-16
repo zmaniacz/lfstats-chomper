@@ -21,8 +21,8 @@ export enum EntityType {
 export interface Center {
   id: number;
   name: string;
-  region_code: number;
-  site_code: number;
+  regionCode: number;
+  siteCode: number;
 }
 
 export interface Game extends lfstats {
@@ -60,7 +60,7 @@ export interface Team extends lfstats {
 export interface Entity extends lfstats, EntityDefault {
   startTime: number;
   endTime: number | null;
-  ipl_id: string;
+  iplId: string;
   type: string;
   desc: string;
   team: number;
@@ -89,7 +89,7 @@ export interface EntityDefault {
 export interface EntityState {
   stateTime: number; //timestamp for the state
   isFinal: boolean; //boolean to idnicate if this is the entity's final state at game end
-  ipl_id: string; //iplaylaserforce id string
+  iplId: string; //iplaylaserforce id string
   score: number; //score
   isActive: boolean; //is the entity currently activated
   isNuking: boolean; //is the entity currently nuking
