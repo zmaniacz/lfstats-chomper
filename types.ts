@@ -1,5 +1,3 @@
-import { float } from "aws-sdk/clients/lightsail";
-
 interface lfstats {
   lfstatsId: number | null;
 }
@@ -89,6 +87,9 @@ export interface EntityDefault {
 }
 
 export interface EntityState {
+  [index: string]: number | string | boolean | EntityMVP | null;
+  uuid: string;
+  position: string;
   stateTime: number;
   isFinal: boolean;
   iplId: string;
@@ -169,9 +170,11 @@ export interface EntityState {
   oppDeacDowntime: number;
   penaltyDowntime: number;
   penalties: number;
+  mvpDetails: EntityMVP | null;
+  mvpValue: number | null;
 }
 
-export interface EntityMVP
+export interface MVPModel
   extends Omit<
     EntityState,
     | "stateTime"
@@ -193,6 +196,8 @@ export interface EntityMVP
   hitDiffDuringRapid: number;
   isEliminated: number;
 }
+
+export interface EntityMVP extends Partial<MVPModel> {}
 
 export interface GameAction {
   time: number;

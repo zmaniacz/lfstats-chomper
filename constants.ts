@@ -1,4 +1,4 @@
-import { EntityType, EntityDefault, EntityState, EntityMVP } from "types";
+import { EntityType, EntityDefault, EntityState, MVPModel } from "types";
 
 export const UIColors: { [index: number]: string } = {
   [0]: "gray", //None
@@ -87,7 +87,7 @@ export const positionDefaults: { [index: string]: EntityDefault } = {
   },
 };
 
-export const MVPDefaults: EntityMVP = {
+export const MVPDefaults: MVPModel = {
   position: "",
   score: 0.001,
   scoreThreshold: 0,
@@ -164,10 +164,10 @@ export const MVPDefaults: EntityMVP = {
   hitDiffDuringRapid: 0,
   accuracy: 10,
   accuracyDuringRapid: 0,
-  isEliminated: 0,
+  isEliminated: -1,
 };
 
-export const DefaultMVPModel: { [index: string]: EntityMVP } = {
+export const DefaultMVPModel: { [index: string]: MVPModel } = {
   [EntityType.Commander]: {
     ...MVPDefaults,
     position: "commander",
@@ -204,10 +204,13 @@ export const DefaultMVPModel: { [index: string]: EntityMVP } = {
     position: "medic",
     scoreThreshold: 3000,
     ammoBoosts: 3,
+    isEliminated: 0,
   },
 };
 
 export const defaultInitialState: EntityState = {
+  uuid: "",
+  position: "",
   stateTime: 0,
   iplId: "",
   lives: 0,
@@ -288,4 +291,6 @@ export const defaultInitialState: EntityState = {
   oppDeacDowntime: 0,
   penaltyDowntime: 0,
   penalties: 0,
+  mvpDetails: null,
+  mvpValue: null,
 };
