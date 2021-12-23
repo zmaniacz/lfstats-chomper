@@ -45,6 +45,7 @@ provider:
           Resource:
             - "arn:aws:s3:::lfstats-scorecard-archive/*"
   runtime: nodejs14.x
+  memorySize: 2048
   timeout: 120
   lambdaHashingVersion: 20201221
   httpApi:
