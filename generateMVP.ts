@@ -13,10 +13,17 @@ export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
       typeof state[prop] === "number" &&
       <number>state[prop] > 0
     ) {
-      result[prop] = <number>mvpModel[prop] * <number>state[prop];
+      //score needs special handling later
+      if (prop !== "score") {
+        result[prop] = <number>mvpModel[prop] * <number>state[prop];
+      } else {
+        result[prop] = <number>state[prop];
+      }
     }
   }
 
+  //this isnt working
+  console.log(`score: ${result.score}`);
   if (result.score && result.score > mvpModel.scoreThreshold) {
     result.score =
       (<number>result.score - mvpModel.scoreThreshold) * <number>mvpModel.score;
