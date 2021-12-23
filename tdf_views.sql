@@ -1,7 +1,12 @@
+drop view public.v_game_team;
+drop view public.v_game_entity;
+drop view public.v_game_entity_state_final
+
 create view public.v_game_entity_state_final
 as
-SELECT game_entity_state.*
+SELECT game_entity_state.*, mvp.mvp, mvp.mvp_details
 FROM game_entity_state
+LEFT JOIN mvp on game_entity_state.id = mvp.game_entity_state_id
 WHERE game_entity_state.is_final = true;
 
 alter table public.v_game_entity_state_final
