@@ -23,7 +23,6 @@ export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
   }
 
   //this isnt working
-  console.log(`score: ${result.score}`);
   if (result.score && result.score > mvpModel.scoreThreshold) {
     result.score =
       (<number>result.score - mvpModel.scoreThreshold) * <number>mvpModel.score;
