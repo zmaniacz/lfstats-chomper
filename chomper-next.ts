@@ -474,7 +474,7 @@ export const chomper = async (
   let stateHistory: EntityState[] = [];
   for (const [ipl_id, state] of currentState.entries()) {
     let p = entities.get(ipl_id) as Entity;
-    if (p.type === "player") stateHistory.push(_.cloneDeep(state));
+    if (p.type === "player") pushState(state, null, stateHistory);
   }
 
   //Just an absolute shit show of naive code and duplication
@@ -1382,6 +1382,7 @@ export const chomper = async (
             (
               mvp,
               mvp_details,
+              mvp_model_id,
               game_entity_state_id
             )
           VALUES (
@@ -1391,6 +1392,7 @@ export const chomper = async (
                   [
                     state.mvpValue,
                     JSON.stringify(state.mvpDetails),
+                    state.mvpModelId,
                     state.uuid,
                   ],
                   sql`, `
@@ -1478,13 +1480,23 @@ function pushState(
   prevState: EntityState | null,
   stateArray: EntityState[]
 ) {
-  if (state && prevState && !_.isEqual(state, prevState)) {
+  if (state) {
+    state.uuid = uuidv4();
+
     if (state.position) {
       let mvp = generateMVP(state, DefaultMVPModel[state.position]);
       state.mvpDetails = mvp.mvpDetails;
       state.mvpValue = mvp.mvpValue;
+      state.mvpModelId = mvp.mvpModelId;
     }
-    state.uuid = uuidv4();
-    stateArray.push(_.cloneDeep(calcUptime(state, prevState)));
+
+    //if we were passed a previous state, then we need to verify its a
+    //new state, then do the uptime calc
+    if (prevState) {
+      if (!_.isEqual(state, prevState))
+        stateArray.push(_.cloneDeep(calcUptime(state, prevState)));
+    } else {
+      stateArray.push(_.cloneDeep(state));
+    }
   }
 }

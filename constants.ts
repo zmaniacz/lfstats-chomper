@@ -291,6 +291,7 @@ export const defaultInitialState: EntityState = {
   oppDeacDowntime: 0,
   penaltyDowntime: 0,
   penalties: 0,
-  mvpDetails: null,
-  mvpValue: null,
+  mvpDetails: {},
+  mvpValue: 0,
+  mvpModelId: 1,
 };

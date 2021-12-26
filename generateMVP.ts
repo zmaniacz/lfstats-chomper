@@ -22,7 +22,6 @@ export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
     }
   }
 
-  //this isnt working
   if (result.score && result.score > mvpModel.scoreThreshold) {
     result.score =
       (<number>result.score - mvpModel.scoreThreshold) * <number>mvpModel.score;
@@ -57,6 +56,6 @@ export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
       mvp += <number>result[prop];
     }
   }
-
-  return { mvpDetails: result, mvpValue: mvp };
+  //hard coded model id for now
+  return { mvpDetails: result, mvpValue: mvp, mvpModelId: 1 };
 }

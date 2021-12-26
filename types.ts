@@ -172,6 +172,7 @@ export interface EntityState {
   penalties: number;
   mvpDetails: EntityMVP | null;
   mvpValue: number | null;
+  mvpModelId: number;
 }
 
 export interface MVPModel
