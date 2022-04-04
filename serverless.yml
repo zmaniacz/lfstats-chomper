@@ -1,6 +1,6 @@
 service: lfstats-chomper
 
-frameworkVersion: "2"
+frameworkVersion: "3"
 
 useDotenv: true
 
@@ -47,7 +47,6 @@ provider:
   runtime: nodejs14.x
   memorySize: 2048
   timeout: 120
-  lambdaHashingVersion: 20201221
   httpApi:
     cors: true
 
