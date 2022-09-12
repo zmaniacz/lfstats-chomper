@@ -44,7 +44,7 @@
       "self_deac_during_rapid": 0,
       "nukes_activated": 0,
       "nukes_detonated": 1,
-      "nuke_medic_hits": 1,
+      "nuke_medic_hits": 0,
       "own_nuke_canceled_by_nuke": -1,
       "own_nuke_canceled_by_game_end": 0,
       "own_nuke_canceled_by_team": -1,

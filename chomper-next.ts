@@ -690,7 +690,7 @@ export const chomper = async (
         playerState.score += 500;
         playerState.deacOpponent += 1;
         playerState.missileOpponent += 1;
-        playerState.spEarned += 5;
+        playerState.spEarned += 2;
       }
 
       if (
