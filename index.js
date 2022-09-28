@@ -222,8 +222,14 @@ export async function handler(event, context) {
                   else player.shotOpponentDuringRapid += 1;
                 }
               }
-              if (record[2] == "0306" || record[2] == "0308")
+              if (record[2] == "0306" || record[2] == "0308") {
                 player.hits.get(target.ipl_id).missiles += 1;
+                if (player.team === target.team) {
+                  target.timesTeamMissiled += 1;
+                } else {
+                  target.timesMissiled += 1;
+                }
+              }
             }
 
             //compute game start, end and length
@@ -313,7 +319,7 @@ export async function handler(event, context) {
               shotsHit: parseInt(record[2]),
               shotsFired: parseInt(record[3]),
               timesZapped: parseInt(record[4]),
-              timesMissiled: parseInt(record[5]),
+              //timesMissiled: parseInt(record[5]), ***Accounted for above to split out team missiles
               missileHits: parseInt(record[6]),
               nukesDetonated: parseInt(record[7]),
               nukesActivated: parseInt(record[8]),
@@ -694,6 +700,7 @@ export async function handler(event, context) {
                       shots_fired,
                       times_zapped,
                       times_missiled,
+                      times_team_missiled,
                       missile_hits,
                       nukes_activated,
                       nukes_detonated,
@@ -752,6 +759,7 @@ export async function handler(event, context) {
                       ${player.shotsFired},
                       ${player.timesZapped},
                       ${player.timesMissiled},
+                      ${player.timesTeamMissiled},
                       ${player.missileHits},
                       ${player.nukesActivated},
                       ${player.nukesDetonated},
