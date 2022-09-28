@@ -160,6 +160,8 @@ export async function handler(event, context) {
               shotOpponentDuringRapid: 0,
               shotTeamDuringRapid: 0,
               hits: new Map(),
+              timesMissiled: 0,
+              timesTeamMissiled: 0,
             };
             entities.set(entity.ipl_id, entity);
           } else if (record[0] == 4) {
