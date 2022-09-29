@@ -28,7 +28,6 @@ import {
 } from "./constants";
 import * as _ from "lodash";
 import { createPool, sql } from "slonik";
-import { AnyLengthString } from "aws-sdk/clients/comprehend";
 
 export const chomper = async (
   event: APIGatewayEvent
@@ -712,7 +711,11 @@ export const chomper = async (
         targetState.lastDeacType = DeacType.Opponent;
       }
       targetState.selfDeac += 1;
-      targetState.selfMissile += 1;
+      if (player.team === target.team) {
+        targetState.selfTeamMissile += 1;
+      } else {
+        targetState.selfMissile += 1;
+      }
       if (targetState.isRapid) {
         targetState.selfDeacDuringRapid += 1;
         targetState.selfMissileDuringRapid += 1;
@@ -1236,6 +1239,7 @@ export const chomper = async (
               missile_opponent,
               missiles_left,
               self_missile,
+              self_team_missile,
               sp_spent,
               sp_earned,
               resupply_shots,
@@ -1322,6 +1326,7 @@ export const chomper = async (
                     state.missileOpponent,
                     state.missilesLeft,
                     state.selfMissile,
+                    state.selfTeamMissile,
                     state.spSpent,
                     state.spEarned,
                     state.resupplyShots,

@@ -246,6 +246,7 @@ export const defaultInitialState: EntityState = {
   missileOpponent: 0,
   missilesLeft: 0,
   selfMissile: 0,
+  selfTeamMissile: 0,
   spSpent: 0,
   spEarned: 0,
   resupplyShots: 0,

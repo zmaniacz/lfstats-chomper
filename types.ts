@@ -125,6 +125,7 @@ export interface EntityState {
   missileOpponent: number;
   missilesLeft: number;
   selfMissile: number;
+  selfTeamMissile: number;
   spSpent: number;
   spEarned: number;
   resupplyShots: number;
