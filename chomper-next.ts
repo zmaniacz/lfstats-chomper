@@ -10,7 +10,7 @@ import { createInterface } from "readline";
 import { Readable } from "stream";
 import { decodeStream, encodeStream } from "iconv-lite";
 import { DateTime } from "luxon";
-import { createPool, sql } from "slonik";
+import { createPool, DatabasePool, sql } from "slonik";
 import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
 import * as _ from "lodash";
 import {
@@ -947,7 +947,7 @@ export const chomper = async (
   console.log("CHOMP: FINAL STATES COMPLETE");
 
   try {
-    const pool = createPool(connectionString, { interceptors });
+    const pool = await createPool(connectionString, { interceptors });
     await pool.connect(async (connection) => {
       await connection.transaction(async (client) => {
         //Insert and retrieve a record for the center

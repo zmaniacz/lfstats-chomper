@@ -962,7 +962,7 @@ export const chomper = async (
   }
 
   try {
-    const pool = createPool(connectionString, { interceptors });
+    const pool = await createPool(connectionString, { interceptors });
     await pool.connect(async (connection) => {
       await connection.transaction(async (client) => {
         //Insert and retrieve a record for the center
