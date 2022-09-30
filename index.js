@@ -360,7 +360,7 @@ export async function handler(event, context) {
     });
   }
 
-  const pool = createPool(connectionString, { interceptors });
+  const pool = await createPool(connectionString, { interceptors });
   await pool.connect(async (connection) => {
     await connection.query(sql`
       INSERT INTO game_imports (id, filename, status)
