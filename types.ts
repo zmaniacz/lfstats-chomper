@@ -190,7 +190,6 @@ export interface MVPModel
     | "lastDeacType"
     | "isRapid"
   > {
-  position: string;
   scoreThreshold: number;
   accuracy: number;
   accuracyDuringRapid: number;

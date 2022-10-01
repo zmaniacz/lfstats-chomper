@@ -174,8 +174,6 @@ export const DefaultMVPModel: { [index: string]: MVPModel } = {
     scoreThreshold: 10000,
     missileOpponent: 1,
     nukesDetonated: 1,
-    nukeMedicHits: 1,
-    ownNukeCanceledByNuke: -1,
     ownNukeCanceledByTeam: -1,
     ownNukeCanceledByResupply: -1,
     ownNukeCanceledByOpponent: -1,
