@@ -36,7 +36,7 @@ export const chomper = async (
   event: APIGatewayEvent
 ): Promise<APIGatewayProxyResult> => {
   const tdfId = event.queryStringParameters?.tdfId;
-  const chomperVersion = "3.1.0";
+  const chomperVersion = "3.1.1";
   let gameId: number = 0;
   const interceptors = [createQueryLoggingInterceptor()];
 
@@ -1059,6 +1059,13 @@ export const chomper = async (
             RETURNING *
           `);
         gameId = gameRecord.id as number;
+
+        console.log("CHOMP2 STATUS: Add Default Tag");
+
+        //For now, assuming all games are Social and applying the global Social tag (id 1)
+        await client.one(
+          sql`INSERT INTO game_tag (tag_id, game_id) VALUES (1, ${gameId})`
+        );
 
         console.log("CHOMP2 STATUS: Create Team Records");
 
