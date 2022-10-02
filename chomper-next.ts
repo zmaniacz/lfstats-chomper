@@ -36,7 +36,7 @@ export const chomper = async (
   event: APIGatewayEvent
 ): Promise<APIGatewayProxyResult> => {
   const tdfId = event.queryStringParameters?.tdfId;
-  const chomperVersion = "3.0.0";
+  const chomperVersion = "3.1.0";
   let gameId: number = 0;
   const interceptors = [createQueryLoggingInterceptor()];
 
