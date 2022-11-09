@@ -1063,7 +1063,7 @@ export const chomper = async (
         console.log("CHOMP2 STATUS: Add Default Tag");
 
         //For now, assuming all games are Social and applying the global Social tag (id 1)
-        await client.one(
+        await client.query(
           sql`INSERT INTO game_tag (tag_id, game_id) VALUES (1, ${gameId})`
         );
 
