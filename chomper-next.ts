@@ -10,7 +10,7 @@ import { createInterface } from "readline";
 import { Readable } from "stream";
 import { decodeStream, encodeStream } from "iconv-lite";
 import { DateTime } from "luxon";
-import { createPool, DatabasePool, sql } from "slonik";
+import { createPool, sql } from "slonik";
 import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
 import * as _ from "lodash";
 import {
@@ -36,7 +36,7 @@ export const chomper = async (
   event: APIGatewayEvent
 ): Promise<APIGatewayProxyResult> => {
   const tdfId = event.queryStringParameters?.tdfId;
-  const chomperVersion = "3.1.1";
+  const chomperVersion = "3.2.0";
   let gameId: number = 0;
   const interceptors = [createQueryLoggingInterceptor()];
 
@@ -1014,15 +1014,24 @@ export const chomper = async (
         `);
 
         //Insert and retrieve a record for the game
-        let gameExist = await client.exists(
-          sql`SELECT id 
+        let gameExist = await client.maybeOne(
+          sql`SELECT id, chomper_version
             FROM game 
             WHERE mission_start=${game.missionStartTime} AND center_id=${centerRecord.id}`
         );
 
         if (gameExist) {
-          console.log("CHOMP2 ABORTED: game exists");
-          throw "GameExistsError";
+          if (gameExist.chomper_version !== chomperVersion) {
+            // the game exists in the database but doesn't match the current chomper version
+            // delete and rebuild
+            console.log("CHOMP2 REBUILD: game exists with old chomper");
+            await client.query(sql`
+            DELETE FROM game WHERE id=${gameExist.id} 
+            `);
+          } else {
+            console.log("CHOMP2 ABORTED: game exists");
+            throw "GameExistsError";
+          }
         }
 
         console.log("CHOMP2 STATUS: Create Game Record");

@@ -111,10 +111,11 @@ export const MVPDefaults: MVPModel = {
   selfHit: 0,
   selfDeac: 0,
   missileBase: 0,
-  missileTeam: 0,
+  missileTeam: -3,
   missileOpponent: 0,
   missilesLeft: 0,
   selfMissile: -1,
+  selfTeamMissile: 0,
   spSpent: 0,
   spEarned: 0,
   resupplyShots: 0,
@@ -200,8 +201,8 @@ export const DefaultMVPModel: { [index: string]: MVPModel } = {
   [EntityType.Medic]: {
     ...MVPDefaults,
     position: "medic",
-    scoreThreshold: 3000,
-    ammoBoosts: 3,
+    scoreThreshold: 2000,
+    lifeBoosts: 3,
     isEliminated: 0,
   },
 };
