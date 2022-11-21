@@ -472,7 +472,7 @@ export const chomper = async (
   // EventMslOppDamage 0305 - unused?
   // EventMslOppDown 0306
   // EventMslOwnDamage 0307 - unused?
-  // EventMslOwnDown 0308 - unused?
+  // EventMslOwnDown 0308
   // EventRapidAct 0400
   // EventRapidDeac 0401 - unused?
   // EventNukeAct 0404
@@ -694,6 +694,7 @@ export const chomper = async (
     }
 
     // EventMslOppDown 0306
+    // We have a separate event for team missile down, but leaving this in for legacy handling
     if (action.type === "0306") {
       playerState.stateTime = action.time;
       playerState.missilesLeft -= 1;
@@ -748,6 +749,35 @@ export const chomper = async (
           targetState.ownNukeCanceledByOpponent += 1;
           playerState.cancelOpponentNuke += 1;
         }
+      }
+    }
+
+    // EventMslOppDown 0308
+    if (action.type === "0308") {
+      playerState.stateTime = action.time;
+      playerState.missilesLeft -= 1;
+      playerState.score -= 500;
+      playerState.deacTeam += 1;
+      playerState.missileTeam += 1;
+
+      targetState.stateTime = action.time;
+      targetState.score -= 100;
+      targetState.isActive = false;
+      targetState.lives = Math.max(targetState.lives - 2, 0);
+      targetState.currentHP = target.maxHP;
+      targetState.lastDeacTime = action.time;
+      targetState.lastDeacType = DeacType.Team;
+      targetState.selfDeac += 1;
+      targetState.selfTeamMissile += 1;
+
+      if (targetState.isRapid) {
+        targetState.selfDeacDuringRapid += 1;
+        targetState.selfMissileDuringRapid += 1;
+      }
+      if (targetState.isNuking) {
+        targetState.isNuking = false;
+        targetState.ownNukeCanceledByTeam += 1;
+        playerState.cancelTeamNuke += 1;
       }
     }
 
