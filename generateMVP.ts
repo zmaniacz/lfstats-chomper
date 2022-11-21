@@ -8,10 +8,10 @@ export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
     if (
       mvpModel[prop] &&
       typeof mvpModel[prop] === "number" &&
-      <number>mvpModel[prop] > 0 &&
+      <number>mvpModel[prop] != 0 &&
       state[prop] &&
       typeof state[prop] === "number" &&
-      <number>state[prop] > 0
+      <number>state[prop] != 0
     ) {
       //score needs special handling later
       if (prop !== "score") {
@@ -29,26 +29,35 @@ export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
     delete result.score;
   }
 
-  if (mvpModel.accuracy > 0) {
+  if (mvpModel.accuracy != 0) {
     result.accuracy =
       mvpModel.accuracy * (state.shotsHit / Math.max(state.shotsFired, 1));
   }
 
-  if (mvpModel.accuracyDuringRapid > 0) {
+  if (mvpModel.accuracyDuringRapid != 0) {
     result.accuracyDuringRapid =
       mvpModel.accuracyDuringRapid *
       (state.shotsHitDuringRapid / Math.max(state.shotsFiredDuringRapid, 1));
   }
 
-  if (mvpModel.hitDiff > 0) {
+  if (mvpModel.hitDiff != 0) {
     result.hitDiff =
       mvpModel.hitDiff * (state.shotOpponent / Math.max(state.selfHit, 1));
   }
 
-  if (mvpModel.hitDiffDuringRapid > 0) {
+  if (mvpModel.hitDiffDuringRapid != 0) {
     result.hitDiffDuringRapid =
       mvpModel.hitDiffDuringRapid *
       (state.shotOpponentDuringRapid / Math.max(state.selfHitDuringRapid, 1));
+  }
+
+  if (mvpModel.isEliminated != 0) {
+    if (
+      (state.position != "Medic" && state.isEliminated) ||
+      (state.position === "Medic" && !state.isEliminated)
+    ) {
+      result.isEliminated = mvpModel.isEliminated * 1;
+    }
   }
 
   for (const prop in result) {

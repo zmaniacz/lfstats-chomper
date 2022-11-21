@@ -1,6 +1,6 @@
 import { EntityType, EntityDefault, EntityState, MVPModel } from "types";
 
-export const chomperVersion = "3.3.0";
+export const chomperVersion = "3.3.1";
 
 export const UIColors: { [index: number]: string } = {
   [0]: "gray", //None
@@ -203,9 +203,10 @@ export const DefaultMVPModel: { [index: string]: MVPModel } = {
   [EntityType.Medic]: {
     ...MVPDefaults,
     position: "medic",
+    score: 0.002,
     scoreThreshold: 2000,
     lifeBoosts: 3,
-    isEliminated: 0,
+    isEliminated: 2,
   },
 };
 
