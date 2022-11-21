@@ -809,6 +809,7 @@ export const chomper = async (
 
       targetState.stateTime = action.time;
       targetState.isActive = false;
+      targetState.isRapid = false;
       targetState.lastDeacTime = action.time;
       targetState.lastDeacType = DeacType.Resupply;
       targetState.selfResupplyShots += 1;
@@ -834,6 +835,7 @@ export const chomper = async (
 
       targetState.stateTime = action.time;
       targetState.isActive = false;
+      targetState.isRapid = false;
       targetState.lastDeacTime = action.time;
       targetState.lastDeacType = DeacType.Resupply;
       targetState.selfResupplyLives += 1;
