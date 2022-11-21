@@ -1,5 +1,7 @@
 import { EntityType, EntityDefault, EntityState, MVPModel } from "types";
 
+export const chomperVersion = "3.2.1";
+
 export const UIColors: { [index: number]: string } = {
   [0]: "gray", //None
   [1]: "red", //Red

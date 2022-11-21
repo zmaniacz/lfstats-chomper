@@ -24,6 +24,7 @@ import {
   Team,
 } from "types";
 import {
+  chomperVersion,
   defaultInitialState,
   entityTypes,
   positionDefaults,
@@ -32,11 +33,25 @@ import {
 } from "./constants";
 import generateMVP from "./generateMVP";
 
+export const version = async (
+  event: APIGatewayEvent
+): Promise<APIGatewayProxyResult> => {
+  return {
+    statusCode: 200,
+    body: JSON.stringify(
+      {
+        chomperVersion: chomperVersion,
+      },
+      null,
+      2
+    ),
+  };
+};
+
 export const chomper = async (
   event: APIGatewayEvent
 ): Promise<APIGatewayProxyResult> => {
   const tdfId = event.queryStringParameters?.tdfId;
-  const chomperVersion = "3.2.0";
   let gameId: number = 0;
   const interceptors = [createQueryLoggingInterceptor()];
 
