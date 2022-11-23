@@ -143,10 +143,10 @@ export const chomper = async (
             missionStartTime: DateTime.fromFormat(record[3], "yyyyMMddHHmmss", {
               zone: "utc",
             }).toSQL({ includeOffset: false }),
-            missionDuration: record[4]
+            missionMaxLength: record[4]
               ? (Math.round(parseInt(record[4]) / 1000) * 1000) / 1000
               : 900,
-            missionDurationMillis:
+            missionMaxLengthMillis:
               typeof record[4] != "undefined" ? parseInt(record[4]) : 900000,
             missionLength: null,
             missionLengthMillis: null,
@@ -1103,7 +1103,7 @@ export const chomper = async (
                 ${game.missionType},
                 ${game.missionDesc},
                 ${game.missionStartTime},
-                ${game.missionDurationMillis},
+                ${game.missionMaxLengthMillis},
                 ${game.penaltyValue},
                 ${game.missionLengthMillis},
                 ${centerRecord.id},

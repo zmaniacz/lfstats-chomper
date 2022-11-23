@@ -30,8 +30,8 @@ export interface Game extends lfstats {
   missionDesc: string;
   missionStart: number;
   missionStartTime: string;
-  missionDuration: number;
-  missionDurationMillis: number;
+  missionMaxLength: number;
+  missionMaxLengthMillis: number;
   missionLength: number | null;
   missionLengthMillis: number | null;
   penaltyValue: number;
