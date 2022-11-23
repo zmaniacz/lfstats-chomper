@@ -1,6 +1,6 @@
 import { S3, SecretsManager } from "aws-sdk";
 import { createInterface } from "readline";
-import moment from "moment";
+import { DateTime } from "luxon";
 import { encodeStream } from "iconv-lite";
 import AutoDetectDecoderStream from "autodetect-decoder-stream";
 import { createPool, sql } from "slonik";
@@ -99,7 +99,13 @@ export async function handler(event, context) {
               missionType: record[1],
               missionDesc: record[2],
               missionStart: parseInt(record[3]),
-              missionStartTime: moment(record[3], "YYYYMMDDHHmmss").format(),
+              missionStartTime: DateTime.fromFormat(
+                record[3],
+                "yyyyMMddHHmmss",
+                {
+                  zone: "utc",
+                }
+              ).toSQL({ includeOffset: false }),
               missionDuration: record[4]
                 ? (Math.round(record[4] / 1000) * 1000) / 1000
                 : 900,
@@ -238,9 +244,6 @@ export async function handler(event, context) {
             if (record[2] == "0101") {
               game.missionLength = (Math.round(record[1] / 1000) * 1000) / 1000;
               game.missionLengthMillis = parseInt(record[1]);
-              game.endtime = moment(game.missionStart, "YYYYMMDDHHmmss")
-                .seconds(game.missionLength)
-                .format();
             }
 
             //track rapid fire starts
@@ -515,7 +518,9 @@ export async function handler(event, context) {
           else winner = "green";
         } else if (redElim) winner = "green";
         else if (greenElim) winner = "red";
-        game.name = `Game @ ${moment(game.missionStartTime).format("HH:mm")}`;
+        game.name = `Game @ ${DateTime.fromSQL(
+          game.missionStartTime
+        ).toLocaleString(DateTime.TIME_24_SIMPLE)}`;
 
         let gameRecord = await client.query(sql`
           INSERT INTO games 

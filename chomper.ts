@@ -26,7 +26,7 @@ import {
   positionDefaults,
   UIColors,
 } from "./constants";
-import * as _ from "lodash";
+import { cloneDeep } from "lodash";
 import { createPool, sql } from "slonik";
 
 export const chomper = async (
@@ -118,18 +118,19 @@ export const chomper = async (
         } else if (record[0] === "1") {
           //;1/mission	type	desc	start duration penalty
           game = {
+            lfstatsId: null,
             missionType: record[1],
             missionDesc: record[2],
             missionStart: parseInt(record[3]),
             missionStartTime: DateTime.fromFormat(record[3], "yyyyMMddHHmmss", {
               zone: "utc",
             }).toSQL({ includeOffset: false }),
-            missionDuration: record[4]
+            missionMaxLength: record[4]
               ? (Math.round(parseInt(record[4]) / 1000) * 1000) / 1000
               : 900,
-            missionDurationMillis: parseInt(record?.[4]) ?? 900000,
-            missionLength: null,
-            missionLengthMillis: null,
+            missionMaxLengthMillis: parseInt(record?.[4]) ?? 900000,
+            missionLength: 900,
+            missionLengthMillis: 900000,
             penaltyValue: parseInt(record?.[5]) ?? null,
           } as Game;
         } else if (record[0] === "2") {
@@ -463,10 +464,10 @@ export const chomper = async (
   for (let action of actions) {
     let playerState = currentState.get(action.player as string) as EntityState;
     let player = entities.get(action.player as string) as Entity;
-    let prevPlayerState = _.cloneDeep(playerState);
+    let prevPlayerState = cloneDeep(playerState);
     let targetState = currentState.get(action.target as string) as EntityState;
     let target = entities.get(action.target as string) as Entity;
-    let prevTargetState = _.cloneDeep(targetState);
+    let prevTargetState = cloneDeep(targetState);
 
     // EventShotMiss 0201
     // EventShotGenMiss 0202
@@ -481,7 +482,7 @@ export const chomper = async (
         playerState.shotsFiredDuringRapid += 1;
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventShotGenDamage 0203
@@ -506,7 +507,7 @@ export const chomper = async (
         playerState.score += 1001;
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventShotOppDamage 0205
@@ -549,8 +550,8 @@ export const chomper = async (
       targetState.currentHP -= player.shotPower;
       targetState.score -= 20;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
-      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     // EventShotOppDown 0206
@@ -641,8 +642,8 @@ export const chomper = async (
         }
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
-      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     // EventMslGenMiss 0301
@@ -650,7 +651,7 @@ export const chomper = async (
       playerState.stateTime = action.time;
       playerState.missilesLeft -= 1;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventMslGenDestroy 0303
@@ -662,7 +663,7 @@ export const chomper = async (
       playerState.score += 1001;
       playerState.spEarned += 5;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventMslGenDestroy 0B03
@@ -671,7 +672,7 @@ export const chomper = async (
       playerState.awardBase += 1;
       playerState.score += 1001;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventMslOppDown 0306
@@ -731,8 +732,8 @@ export const chomper = async (
         }
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
-      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     //track rapid fire starts
@@ -742,7 +743,7 @@ export const chomper = async (
       playerState.isRapid = true;
       playerState.spSpent += 10;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     if (action.type === "0404") {
@@ -751,7 +752,7 @@ export const chomper = async (
       playerState.spSpent += 20;
       playerState.nukesActivated += 1;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     if (action.type === "0405") {
@@ -761,7 +762,7 @@ export const chomper = async (
       playerState.score += 500;
 
       for (const [ipl_id, state] of currentState.entries()) {
-        let prevState = _.cloneDeep(state);
+        let prevState = cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (
           p.type === "player" &&
@@ -783,11 +784,11 @@ export const chomper = async (
           state.lives = Math.max(state.lives - 3, 0);
           state.currentHP = p.maxHP;
 
-          stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
+          stateHistory.push(cloneDeep(calcUptime(state, prevState)));
         }
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventResupplyShots 0500
@@ -814,8 +815,8 @@ export const chomper = async (
         playerState.cancelTeamNuke += 1;
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
-      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     // EventResupplyLives 0502
@@ -843,8 +844,8 @@ export const chomper = async (
         playerState.cancelTeamNuke += 1;
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
-      stateHistory.push(_.cloneDeep(calcUptime(targetState, prevTargetState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(targetState, prevTargetState)));
     }
 
     // EventResupplyTeamShots 0510
@@ -854,7 +855,7 @@ export const chomper = async (
       playerState.spSpent += 15;
 
       for (const [ipl_id, state] of currentState.entries()) {
-        let prevState = _.cloneDeep(state);
+        let prevState = cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (
           p.type === "player" &&
@@ -867,11 +868,11 @@ export const chomper = async (
           state.ammoBoostReceived += 1;
           playerState.ammoBoostedPlayers += 1;
 
-          stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
+          stateHistory.push(cloneDeep(calcUptime(state, prevState)));
         }
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventResupplyTeamLives 0512
@@ -881,7 +882,7 @@ export const chomper = async (
       playerState.spSpent += 10;
 
       for (const [ipl_id, state] of currentState.entries()) {
-        let prevState = _.cloneDeep(state);
+        let prevState = cloneDeep(state);
         let p = entities.get(ipl_id) as Entity;
         if (
           p.type === "player" &&
@@ -894,11 +895,11 @@ export const chomper = async (
           state.lifeBoostReceived += 1;
           playerState.lifeBoostedPlayers += 1;
 
-          stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
+          stateHistory.push(cloneDeep(calcUptime(state, prevState)));
         }
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventPenalty 0600
@@ -911,7 +912,7 @@ export const chomper = async (
         playerState.ownNukeCanceledByPenalty += 1;
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventReactivate LFS001
@@ -919,7 +920,7 @@ export const chomper = async (
       playerState.stateTime = action.time;
       playerState.isActive = true;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventEliminated LFS002
@@ -928,7 +929,7 @@ export const chomper = async (
       playerState.isActive = false;
       playerState.isEliminated = true;
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
     // EventAssist LFS003
@@ -940,15 +941,15 @@ export const chomper = async (
         playerState.assistsDuringRapid += 1;
       }
 
-      stateHistory.push(_.cloneDeep(calcUptime(playerState, prevPlayerState)));
+      stateHistory.push(cloneDeep(calcUptime(playerState, prevPlayerState)));
     }
 
-    action.state = _.cloneDeep(currentState);
+    action.state = cloneDeep(currentState);
   }
 
   //set final states
   for (let [, state] of currentState) {
-    let prevState = _.cloneDeep(state);
+    let prevState = cloneDeep(state);
     let entity = entities.get(state.iplId) as Entity;
     state.stateTime = entity.endTime as number;
     state.isFinal = true;
@@ -957,7 +958,7 @@ export const chomper = async (
         state.isNuking = false;
         state.ownNukeCanceledByGameEnd += 1;
       }
-      stateHistory.push(_.cloneDeep(calcUptime(state, prevState)));
+      stateHistory.push(cloneDeep(calcUptime(state, prevState)));
     }
   }
 
@@ -1059,7 +1060,7 @@ export const chomper = async (
                 ${game.missionType},
                 ${game.missionDesc},
                 ${game.missionStartTime},
-                ${game.missionDurationMillis},
+                ${game.missionMaxLengthMillis},
                 ${game.penaltyValue},
                 ${game.missionLengthMillis},
                 ${centerRecord.id},

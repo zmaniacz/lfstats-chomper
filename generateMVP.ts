@@ -1,6 +1,11 @@
-import { EntityMVP, EntityState, MVPModel } from "types";
+import { EntityMVP, EntityState, Game, MVPModel, Team } from "types";
 
-export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
+export default function generateMVP(
+  state: EntityState,
+  mvpModel: MVPModel,
+  game: Game,
+  team: Team
+) {
   let result: EntityMVP = { position: mvpModel.position };
   let mvp = 0;
 
@@ -57,6 +62,24 @@ export default function generateMVP(state: EntityState, mvpModel: MVPModel) {
       (state.position === "Medic" && !state.isEliminated)
     ) {
       result.isEliminated = mvpModel.isEliminated * 1;
+    }
+  }
+
+  if (state.isFinal && team.oppEliminated) {
+    //calculate the elim bonus
+    if (game.missionLength) {
+      result.elimBonus = Math.max(
+        mvpModel.elimMinBonus +
+          ((game.missionMaxLength -
+            game.missionLength -
+            mvpModel.elimMinutesRemainingThreshold * 60) *
+            mvpModel.elimPerMinuteBonus) /
+            60,
+        mvpModel.elimMinBonus
+      );
+    } else {
+      //default to 2
+      result.elimBonus = mvpModel.elimDefaultBonus;
     }
   }
 

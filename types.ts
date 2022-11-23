@@ -32,9 +32,9 @@ export interface Game extends lfstats {
   missionStartTime: string;
   missionMaxLength: number;
   missionMaxLengthMillis: number;
-  missionLength: number | null;
-  missionLengthMillis: number | null;
-  penaltyValue: number;
+  missionLength: number;
+  missionLengthMillis: number;
+  penaltyValue: number | null;
 }
 
 export interface GameMetaData {
@@ -196,6 +196,10 @@ export interface MVPModel
   hitDiff: number;
   hitDiffDuringRapid: number;
   isEliminated: number;
+  elimMinBonus: number; //receive at least this many no matter what
+  elimMinutesRemainingThreshold: number; //Number of minutes remaining that do not score per minute points
+  elimPerMinuteBonus: number; //Number of points earned per minute applied fractionally to the second
+  elimDefaultBonus: number; //default bonus if no mission length data available
 }
 
 export interface EntityMVP extends Partial<MVPModel> {}
