@@ -13,7 +13,6 @@ plugins:
 
 provider:
   name: aws
-  deploymentMethod: direct
   stage: prod
   iam:
     role:
