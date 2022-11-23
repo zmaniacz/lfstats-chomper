@@ -53,10 +53,6 @@ provider:
     cors: true
 
 functions:
-  newChomper:
-    handler: chomper.chomper
-    events:
-      - httpApi: "GET /chomper"
   chomperNext:
     handler: chomper-next.chomper
     events:
