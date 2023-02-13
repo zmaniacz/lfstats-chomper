@@ -47,7 +47,7 @@ provider:
             - "arn:aws:s3:::lfstats-scorecard-archive/*"
   runtime: nodejs14.x
   memorySize: 2048
-  timeout: 120
+  timeout: 600
   httpApi:
     cors: true
 
