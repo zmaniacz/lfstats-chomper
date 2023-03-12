@@ -168,10 +168,10 @@ export const MVPDefaults: MVPModel = {
   accuracy: 10,
   accuracyDuringRapid: 0,
   isEliminated: -1,
-  elimMinBonus: 1,
-  elimMinutesRemainingThreshold: 1,
+  elimMinBonus: 4,
+  elimMinutesRemainingThreshold: 3,
   elimPerMinuteBonus: 1,
-  elimDefaultBonus: 2,
+  elimDefaultBonus: 4,
 };
 
 export const DefaultMVPModel: { [index: string]: MVPModel } = {

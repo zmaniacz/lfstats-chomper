@@ -78,7 +78,7 @@ export default function generateMVP(
         mvpModel.elimMinBonus
       );
     } else {
-      //default to 2
+      //default bonus
       result.elimBonus = mvpModel.elimDefaultBonus;
     }
   }
