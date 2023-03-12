@@ -1148,14 +1148,15 @@ export async function handler(event, context) {
           mvpDetails.missiledTeam.value += scorecard.missiled_team * -3;
 
           //WINNER
-          //at least 1 MVP for an elim, increased by 1/60 for each second of time remaining over 60
-          if (scorecard.elim_other_team > 0)
+          //at least 4 MVP for an elim, increased by 1/60 for each second of time remaining over 3 minutes
+          if (scorecard.elim_other_team > 0) {
             mvpDetails.elimBonus.value += Number.parseFloat(
               Math.max(
-                1.0,
-                (newGame.duration - newGame.game_length) / 60
+                4.0 + (newGame.duration - newGame.game_length - 180) / 60,
+                4.0
               ).toFixed(2)
             );
+          }
 
           //sum it up and insert
           for (const prop in mvpDetails) {
