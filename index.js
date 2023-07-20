@@ -30,7 +30,7 @@ export async function handler(event, context) {
   try {
     const data = await getDBCreds();
     let secret = JSON.parse(data.SecretString);
-    connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats`;
+    connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats?sslmode=require`;
     //tdfConnectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf`;
   } catch (err) {
     console.log("SECRET ERROR", err.stack);

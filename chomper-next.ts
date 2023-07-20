@@ -78,7 +78,7 @@ export const chomper = async (
     let { SecretString } = await secretClient.send(secretCommand);
     if (SecretString) {
       let secret = JSON.parse(SecretString);
-      connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf`;
+      connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf?sslmode=require`;
     } else throw "secret error";
   } catch (error) {
     return {
