@@ -1,6 +1,6 @@
 service: lfstats-chomper
 
-frameworkVersion: "3"
+frameworkVersion: "4"
 
 useDotenv: true
 
@@ -8,7 +8,6 @@ package:
   individually: true
 
 plugins:
-  - serverless-bundle
   - serverless-offline
 
 provider:
@@ -73,13 +72,12 @@ functions:
           rules:
             - suffix: .tdf
           existing: true
-
+build:
+  esbuild:
+    external:
+      - slonik
+    exclude:
+      - pg-native
 custom:
   serverless-offline:
     httpPort: 4000
-  bundle:
-    ignorePackages:
-      - pg-native
-    linting: false
-    externals:
-      - slonik
