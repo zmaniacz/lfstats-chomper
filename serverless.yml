@@ -45,7 +45,7 @@ provider:
             - "s3:GetObject"
           Resource:
             - "arn:aws:s3:::lfstats-scorecard-archive/*"
-  runtime: nodejs14.x
+  runtime: nodejs20.x
   memorySize: 2048
   timeout: 600
   httpApi:
