@@ -497,6 +497,7 @@ export const chomper = async (
   // EventResupplyTeamLives 0512
   // EventPenalty 0600
   // EventAchieve 0900
+  // EventTicketWin 0901 - ignore
   // EventBaseAwarded 0B03
 
   //initialize history with all our start states
@@ -729,7 +730,10 @@ export const chomper = async (
         }
       }
 
-      if (action.target) {
+      // excluding the ticket win event that has a fake target
+      // i really should do something like validate its a real target instead
+      // this is a shortcut
+      if (action.target && action.type !== "0901") {
         //now for actions with a player and a target
         let targetState = currentState.get(action.target) as EntityState;
         let target = entities.get(action.target) as Entity;
