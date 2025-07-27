@@ -10,7 +10,7 @@ const interceptors = [createQueryLoggingInterceptor()];
 
 const s3 = new S3({ apiVersion: "2006-03-01" });
 const secretsmanager = new SecretsManager({ apiVersion: "2017-10-17" });
-const chomperVersion = "1.0.0";
+const chomperVersion = "1.1.0";
 
 const targetBucket = process.env.TARGET_BUCKET;
 let connectionString = "";
@@ -528,9 +528,53 @@ export async function handler(event, context) {
 
         let gameRecord = await client.query(sql`
           INSERT INTO games 
-            (game_name,game_description,game_datetime,game_length,duration,red_score,green_score,red_adj,green_adj,winner,red_eliminated,green_eliminated,type,center_id,event_id,tdf_key)
+            (
+              game_name,
+              game_description,
+              game_datetime,
+              game_length,
+              duration,
+              red_score,
+              green_score,
+              red_adj,
+              green_adj,
+              winner,
+              red_eliminated,
+              green_eliminated,
+              type,
+              center_id,
+              event_id,
+              tdf_key,
+              tdf_file_version,
+              tdf_program_version,
+              tdf_region_code,
+              tdf_site_code,
+              chomper_version
+            )
           VALUES
-            (${game.name},'',${game.missionStartTime},${game.missionLength},${game.missionDuration},${redTeam.score},${greenTeam.score},${redBonus},${greenBonus},${winner},${redElim},${greenElim},${event.type},${event.center_id},${event.id},${game.tdfKey})
+            (
+              ${game.name},
+              '',
+              ${game.missionStartTime},
+              ${game.missionLength},
+              ${game.missionDuration},
+              ${redTeam.score},
+              ${greenTeam.score},
+              ${redBonus},
+              ${greenBonus},
+              ${winner},
+              ${redElim},
+              ${greenElim},
+              ${event.type},
+              ${event.center_id},
+              ${event.id},
+              ${game.tdfKey},
+              ${game.metadata.fileVersion},
+              ${game.metadata.programVersion},
+              ${game.metadata.regionCode},
+              ${game.metadata.siteCode},
+              ${game.metadata.chomperVersion},
+            )
           RETURNING *
         `);
         let newGame = gameRecord.rows[0];
