@@ -68,6 +68,7 @@ export interface Entity extends lfstats, EntityDefault {
   category: number;
   position: EntityType;
   battlesuit: string | null;
+  memberId: string | null;
   endCode: string | null;
   gameTeamId: number | null; //database id for team object
   initialState: EntityState;

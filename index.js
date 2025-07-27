@@ -146,7 +146,7 @@ export async function handler(event, context) {
             };
             teams.set(team.index, team);
           } else if (record[0] == 3) {
-            //;3/entity-start	time	id	type	desc	team	level	category
+            //;3/entity-start	time	id	type	desc	team	level	category battlesuit memberId
             let entity = {
               start: parseInt(record[1]),
               ipl_id: record[2],
@@ -168,6 +168,8 @@ export async function handler(event, context) {
               hits: new Map(),
               timesMissiled: 0,
               timesTeamMissiled: 0,
+              battlesuit: typeof record[8] != "undefined" ? record[8] : null,
+              memberNumber: typeof record[9] != "undefined" ? record[9] : null,
             };
             entities.set(entity.ipl_id, entity);
           } else if (record[0] == 4) {
@@ -441,17 +443,19 @@ export async function handler(event, context) {
         //find or create lfstats player IDs
         //baller screaver optimization
         return await client.query(sql`
-          INSERT INTO players (player_name,ipl_id) 
+          INSERT INTO players (player_name,ipl_id,member_id) 
           VALUES (
             ${sql.join(
               [...entities]
                 .filter((p) => p[1].type === "player")
                 .sort()
-                .map((p) => sql.join([p[1].desc, p[1].ipl_id], sql`, `)),
+                .map((p) =>
+                  sql.join([p[1].desc, p[1].ipl_id, p[1].memberNumber], sql`, `)
+                ),
               sql`), (`
             )}
           )
-          ON CONFLICT (ipl_id) DO UPDATE SET player_name=excluded.player_name
+          ON CONFLICT (ipl_id) DO UPDATE SET player_name=excluded.player_name, member_id=excluded.memberNumber
           RETURNING *
         `);
       });
@@ -750,7 +754,8 @@ export async function handler(event, context) {
                       shots_fired_during_rapid,
                       shots_hit_during_rapid,
                       shot_opponent_during_rapid,
-                      shot_team_during_rapid
+                      shot_team_during_rapid,
+                      battlesuit
                     )
                   VALUES
                     (
@@ -809,7 +814,8 @@ export async function handler(event, context) {
                       ${player.shotsFiredDuringRapid},
                       ${player.shotsHitDuringRapid},
                       ${player.shotOpponentDuringRapid},
-                      ${player.shotTeamDuringRapid}
+                      ${player.shotTeamDuringRapid},
+                      ${player.battlesuit}
                     )
                     RETURNING *
                 `);
@@ -1231,8 +1237,8 @@ export async function handler(event, context) {
           await client.query(sql`
                 UPDATE scorecards
                 SET mvp_points=${mvp}, mvp_details=${JSON.stringify(
-            mvpDetails
-          )}, uptime=${uptime}, resupply_downtime=${resupplyDowntime}, other_downtime=${otherDowntime}
+                  mvpDetails
+                )}, uptime=${uptime}, resupply_downtime=${resupplyDowntime}, other_downtime=${otherDowntime}
                 WHERE id = ${scorecard.id}
               `);
         }

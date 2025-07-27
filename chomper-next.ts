@@ -150,13 +150,17 @@ export const chomper = async (
           game.missionType = record[1];
           game.missionDesc = record[2];
           game.missionStart = parseInt(record[3]);
-          game.missionStartTime = DateTime.fromFormat(
+
+          let missionStartTime = DateTime.fromFormat(
             record[3],
             "yyyyMMddHHmmss",
             {
               zone: "utc",
             }
           ).toSQL({ includeOffset: false });
+          if (!missionStartTime) throw new Error("Bad Mission start time");
+          game.missionStartTime = missionStartTime;
+
           game.missionMaxLength = record[4]
             ? (Math.round(parseInt(record[4]) / 1000) * 1000) / 1000
             : 900;
@@ -180,7 +184,7 @@ export const chomper = async (
           } as Team;
           teams.set(team.index, team);
         } else if (record[0] === "3") {
-          //;3/entity-start	time	id	type	desc	team	level	category
+          //;3/entity-start	time	id	type	desc	team	level	category battlesuit memberId
           let position = entityTypes[parseInt(record[7])] ?? null;
           let entity = {
             startTime: parseInt(record[1]),
@@ -192,6 +196,7 @@ export const chomper = async (
             category: parseInt(record[7]),
             position: position,
             battlesuit: record?.[8] ?? null,
+            memberId: record?.[9] ?? null,
             endCode: null,
             ...positionDefaults[position],
             initialState: { ...defaultInitialState },
@@ -1078,17 +1083,19 @@ export const chomper = async (
 
         //insert players
         let playerRecords = await client.any(sql`
-          INSERT INTO player (ipl_id, current_alias)
+          INSERT INTO player (ipl_id, current_alias, member_id)
           VALUES (
             ${sql.join(
               [...entities]
                 .filter(([, e]) => e.type === "player")
                 .sort()
-                .map(([, e]) => sql.join([e.iplId, e.desc], sql`, `)),
+                .map(([, e]) =>
+                  sql.join([e.iplId, e.desc, e.memberId], sql`, `)
+                ),
               sql`), (`
             )}
           )
-          ON CONFLICT (ipl_id) DO UPDATE SET current_alias = EXCLUDED.current_alias
+          ON CONFLICT (ipl_id) DO UPDATE SET current_alias = EXCLUDED.current_alias, member_id = EXCLUDED.member_id
           RETURNING *
         `);
 

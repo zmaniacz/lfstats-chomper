@@ -27,7 +27,7 @@ export default function generateMVP(
     }
   }
 
-  if (result.score && result.score > mvpModel.scoreThreshold) {
+  if (result.score && <number>result.score > mvpModel.scoreThreshold) {
     result.score =
       (<number>result.score - mvpModel.scoreThreshold) * <number>mvpModel.score;
   } else {
