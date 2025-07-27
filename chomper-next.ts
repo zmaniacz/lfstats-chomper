@@ -562,7 +562,8 @@ export const chomper = async (
       }
 
       // EventMslGenMiss 0301
-      if (action.type === "0301") {
+      // EventMslMiss 0304
+      if (action.type === "0301" || action.type === "0304") {
         playerState.stateTime = action.time;
         playerState.missilesLeft -= 1;
       }
