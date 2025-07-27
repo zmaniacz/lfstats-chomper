@@ -16,25 +16,24 @@
   },
   "homepage": "https://github.com/zmaniacz/lfstats-chomper#readme",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.216.0",
-    "@aws-sdk/client-secrets-manager": "^3.216.0",
-    "@types/aws-lambda": "^8.10.109",
-    "@types/uuid": "^8.3.4",
+    "@aws-sdk/client-s3": "^3.850.0",
+    "@aws-sdk/client-secrets-manager": "^3.848.0",
+    "@types/aws-lambda": "^8.10.152",
+    "@types/uuid": "^10.0.0",
     "autodetect-decoder-stream": "^2.0.2",
-    "aws-sdk": "^2.1260.0",
+    "aws-sdk": "^2.1692.0",
     "iconv-lite": "^0.6.3",
     "lodash": "^4.17.21",
-    "luxon": "^3.1.0",
+    "luxon": "^3.7.1",
     "slonik": "^31.2.4",
     "slonik-interceptor-query-logging": "^1.4.7",
-    "uuid": "^9.0.0"
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.190",
-    "@types/luxon": "^3.1.0",
-    "eslint": "^8.28.0",
-    "serverless-bundle": "^5.5.0",
-    "serverless-offline": "^11.5.0",
-    "typescript": "^4.9.3"
+    "@types/lodash": "^4.17.20",
+    "@types/luxon": "^3.6.2",
+    "eslint": "^9.32.0",
+    "serverless-offline": "^14.4.0",
+    "typescript": "^5.8.3"
   }
 }
