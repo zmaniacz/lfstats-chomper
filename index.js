@@ -573,7 +573,7 @@ export async function handler(event, context) {
               ${game.metadata.programVersion},
               ${game.metadata.regionCode},
               ${game.metadata.siteCode},
-              ${game.metadata.chomperVersion},
+              ${game.metadata.chomperVersion}
             )
           RETURNING *
         `);
