@@ -455,7 +455,7 @@ export async function handler(event, context) {
               sql`), (`
             )}
           )
-          ON CONFLICT (ipl_id) DO UPDATE SET player_name=excluded.player_name, member_id=excluded.memberNumber
+          ON CONFLICT (ipl_id) DO UPDATE SET player_name=excluded.player_name, member_id=excluded.member_id
           RETURNING *
         `);
       });
