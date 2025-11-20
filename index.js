@@ -1,8 +1,8 @@
-import { S3, SecretsManager } from "aws-sdk";
-import { createInterface } from "readline";
-import { DateTime } from "luxon";
-import { encodeStream } from "iconv-lite";
 import AutoDetectDecoderStream from "autodetect-decoder-stream";
+import { S3, SecretsManager } from "aws-sdk";
+import { encodeStream } from "iconv-lite";
+import { DateTime } from "luxon";
+import { createInterface } from "readline";
 import { createPool, sql } from "slonik";
 import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
 
@@ -13,14 +13,15 @@ const secretsmanager = new SecretsManager({ apiVersion: "2017-10-17" });
 const chomperVersion = "1.1.0";
 
 const targetBucket = process.env.TARGET_BUCKET;
+const sourceBucket = process.env.SOURCE_BUCKET;
+const dbCredsSecret = process.env.DB_CREDS_SECRET;
 let connectionString = "";
 //let tdfConnectionString = "";
 
 function getDBCreds() {
   return secretsmanager
     .getSecretValue({
-      SecretId:
-        "arn:aws:secretsmanager:us-east-1:474496752274:secret:prod/lfstats-MSO2km",
+      SecretId: `arn:aws:secretsmanager:us-east-1:474496752274:secret:${dbCredsSecret}`,
     })
     .promise();
 }
@@ -31,7 +32,6 @@ export async function handler(event, context) {
     const data = await getDBCreds();
     let secret = JSON.parse(data.SecretString);
     connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats?sslmode=no-verify`;
-    //tdfConnectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf`;
   } catch (err) {
     console.log("SECRET ERROR", err.stack);
   }

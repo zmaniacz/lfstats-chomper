@@ -1,18 +1,17 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { APIGatewayEvent, APIGatewayProxyResult } from "aws-lambda";
 import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { v4 as uuidv4 } from "uuid";
+import { APIGatewayEvent, APIGatewayProxyResult } from "aws-lambda";
 import { once } from "events";
-import { createInterface } from "readline";
-import { Readable } from "stream";
 import { decodeStream, encodeStream } from "iconv-lite";
+import { cloneDeep, isEqual } from "lodash";
 import { DateTime } from "luxon";
+import { createInterface } from "readline";
 import { createPool, sql } from "slonik";
 import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging";
-import { cloneDeep, isEqual } from "lodash";
+import { Readable } from "stream";
 import {
   DeacType,
   Entity,
@@ -23,15 +22,19 @@ import {
   GameMetaData,
   Team,
 } from "types";
+import { v4 as uuidv4 } from "uuid";
 import {
   chomperVersion,
   defaultInitialState,
+  DefaultMVPModel,
   entityTypes,
   positionDefaults,
   UIColors,
-  DefaultMVPModel,
 } from "./constants";
 import generateMVP from "./generateMVP";
+
+const dbCredsSecret = process.env.DB_CREDS_SECRET;
+const archiveBucket = process.env.ARCHIVE_BUCKET;
 
 export const version = async (
   event: APIGatewayEvent
@@ -70,15 +73,14 @@ export const chomper = async (
 
   const secretClient = new SecretsManagerClient({ region: "us-east-1" });
   const secretCommand = new GetSecretValueCommand({
-    SecretId:
-      "arn:aws:secretsmanager:us-east-1:474496752274:secret:prod/lfstats-MSO2km",
+    SecretId: `arn:aws:secretsmanager:us-east-1:474496752274:secret:${dbCredsSecret}`,
   });
   let connectionString = "";
   try {
     let { SecretString } = await secretClient.send(secretCommand);
     if (SecretString) {
       let secret = JSON.parse(SecretString);
-      connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf?sslmode=no-verify`;
+      connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats_tdf?sslmode=require`;
     } else throw "secret error";
   } catch (error) {
     return {
@@ -97,7 +99,7 @@ export const chomper = async (
   //then read line by line and load to the db
   const s3Client = new S3Client({ region: "us-east-1" });
   const s3Command = new GetObjectCommand({
-    Bucket: "lfstats-scorecard-archive",
+    Bucket: archiveBucket as string,
     Key: `${tdfId}.tdf`,
   });
   console.log("CHOMP: READING " + tdfId);
@@ -1062,7 +1064,9 @@ export const chomper = async (
 
   try {
     const pool = await createPool(connectionString, { interceptors });
+    console.log("CHOMP2 STATUS: CONNECTED TO DB");
     await pool.connect(async (connection) => {
+      console.log("CHOMP2 STATUS: START TRANSACTION");
       await connection.transaction(async (client) => {
         //Insert and retrieve a record for the center
         let centerRecord = await client.maybeOne(sql`

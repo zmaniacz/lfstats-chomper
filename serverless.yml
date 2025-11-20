@@ -21,7 +21,7 @@ provider:
           Action:
             - "secretsmanager:GetSecretValue"
           Resource:
-            - "arn:aws:secretsmanager:us-east-1:474496752274:secret:prod/lfstats-MSO2km"
+            - "arn:aws:secretsmanager:us-east-1:474496752274:secret:prod/lfstats-redial-EOiduY"
         - Effect: "Allow"
           Action:
             - "s3:ListBucket"
@@ -54,6 +54,10 @@ provider:
 functions:
   chomperNext:
     handler: chomper-next.chomper
+    environment:
+      ROARR_LOG: false
+      ARCHIVE_BUCKET: lfstats-scorecard-archive
+      DB_CREDS_SECRET: prod/lfstats-redial-EOiduY
     events:
       - httpApi: "GET /chomper-next"
   chomperNextVersion:
@@ -64,8 +68,9 @@ functions:
     handler: index.handler
     environment:
       TARGET_BUCKET: lfstats-scorecard-archive
-      ROARR_LOG: true
+      ROARR_LOG: false
       SOURCE_BUCKET: lfstats-incoming
+      DB_CREDS_SECRET: prod/lfstats-redial-EOiduY
     events:
       - s3:
           bucket: lfstats-incoming
