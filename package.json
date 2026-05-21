@@ -11,6 +11,9 @@
   },
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "bugs": {
     "url": "https://github.com/zmaniacz/lfstats-chomper/issues"
   },
@@ -19,8 +22,6 @@
     "@aws-sdk/client-s3": "^3.934.0",
     "@aws-sdk/client-secrets-manager": "^3.934.0",
     "@types/aws-lambda": "^8.10.159",
-    "autodetect-decoder-stream": "^2.0.2",
-    "aws-sdk": "^2.1692.0",
     "iconv-lite": "^0.7.0",
     "lodash": "^4.17.21",
     "luxon": "^3.7.2",
@@ -30,7 +31,6 @@
   },
   "devDependencies": {
     "@types/lodash": "^4.17.20",
-    "@types/luxon": "^3.7.1",
     "eslint": "^9.39.1",
     "serverless-offline": "^14.4.0",
     "typescript": "^5.9.3"

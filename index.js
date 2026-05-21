@@ -1,6 +1,14 @@
-import AutoDetectDecoderStream from "autodetect-decoder-stream";
-import { S3, SecretsManager } from "aws-sdk";
-import { encodeStream } from "iconv-lite";
+import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
+import {
+  CopyObjectCommand,
+  DeleteObjectCOmmand,
+  GetObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { decodeStream, encodeStream } from "iconv-lite";
 import { DateTime } from "luxon";
 import { createInterface } from "readline";
 import { createPool, sql } from "slonik";
@@ -8,32 +16,37 @@ import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging"
 
 const interceptors = [createQueryLoggingInterceptor()];
 
-const s3 = new S3({ apiVersion: "2006-03-01" });
-const secretsmanager = new SecretsManager({ apiVersion: "2017-10-17" });
+const s3Client = new S3Client({ region: "us-east-1" });
 const chomperVersion = "1.1.0";
 
 const targetBucket = process.env.TARGET_BUCKET;
 const sourceBucket = process.env.SOURCE_BUCKET;
 const dbCredsSecret = process.env.DB_CREDS_SECRET;
-let connectionString = "";
-//let tdfConnectionString = "";
-
-function getDBCreds() {
-  return secretsmanager
-    .getSecretValue({
-      SecretId: `arn:aws:secretsmanager:us-east-1:474496752274:secret:${dbCredsSecret}`,
-    })
-    .promise();
-}
 
 export async function handler(event, context) {
   console.log("FIND SECRET");
+  const secretClient = new SecretsManagerClient({ region: "us-east-1" });
+  const secretCommand = new GetSecretValueCommand({
+    SecretId: `arn:aws:secretsmanager:us-east-1:474496752274:secret:${dbCredsSecret}`,
+  });
+  let connectionString = "";
   try {
-    const data = await getDBCreds();
-    let secret = JSON.parse(data.SecretString);
-    connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats?sslmode=no-verify`;
-  } catch (err) {
-    console.log("SECRET ERROR", err.stack);
+    let { SecretString } = await secretClient.send(secretCommand);
+    if (SecretString) {
+      let secret = JSON.parse(SecretString);
+      connectionString = `postgres://${secret.username}:${secret.password}@${secret.host}:${secret.port}/lfstats?sslmode=require`;
+    } else throw "secret error";
+  } catch (error) {
+    return {
+      statusCode: 502,
+      body: JSON.stringify(
+        {
+          message: "secret error",
+        },
+        null,
+        2,
+      ),
+    };
   }
 
   const params = {
@@ -104,7 +117,7 @@ export async function handler(event, context) {
                 "yyyyMMddHHmmss",
                 {
                   zone: "utc",
-                }
+                },
               ).toSQL({ includeOffset: false }),
               missionDuration: record[4]
                 ? (Math.round(record[4] / 1000) * 1000) / 1000
@@ -373,34 +386,35 @@ export async function handler(event, context) {
     `);
 
     try {
+      console.log("READ TDF");
+      const s3Command = new GetObjectCommand(params);
+      const { Body } = await s3Client.send(s3Command);
       const rl = createInterface({
-        input: s3
-          .getObject(params)
-          .createReadStream()
-          .pipe(new AutoDetectDecoderStream())
-          .pipe(encodeStream("utf8")),
+        input: Body.pipe(decodeStream("utf16le")).pipe(encodeStream("utf8")),
         terminal: false,
       });
 
       await chompFile(rl);
 
-      const storageParams = {
-        CopySource: params.Bucket + "/" + params.Key,
-        Bucket: targetBucket,
-        Key: game.tdfKey,
-      };
+      try {
+        const copyResult = await s3.send(
+          new CopyObjectCommand({
+            CopySource: params.Bucket + "/" + params.Key,
+            Bucket: targetBucket,
+            Key: game.tdfKey,
+          }),
+        );
+        console.log("MOVED TDF TO ARCHIVE", copyResult);
+      } catch (err) {
+        console.log("ERROR MOVING TDF TO ARCHIVE", err);
+      }
 
-      await s3
-        .copyObject(storageParams)
-        .promise()
-        .then((data) => console.log("MOVED TDF TO ARCHIVE", data))
-        .catch((err) => console.log(err, err.stack));
-
-      await s3
-        .deleteObject(params)
-        .promise()
-        .then((data) => console.log("REMOVED TDF", data))
-        .catch((err) => console.log(err, err.stack));
+      try {
+        const deleteResult = await s3.send(new DeleteObjectCommand(params));
+        console.log("REMOVED TDF", deleteResult);
+      } catch (err) {
+        console.log("ERROR REMOVING TDF", err);
+      }
 
       //IMPORT PROCESS
       await connection.query(sql`
@@ -414,7 +428,7 @@ export async function handler(event, context) {
         sql`SELECT games.id 
             FROM games 
             INNER JOIN centers ON games.center_id=centers.id 
-            WHERE game_datetime=${game.missionStartTime} AND centers.ipl_id=${game.center}`
+            WHERE game_datetime=${game.missionStartTime} AND centers.ipl_id=${game.center}`,
       );
 
       if (gameExist != null) {
@@ -450,9 +464,12 @@ export async function handler(event, context) {
                 .filter((p) => p[1].type === "player")
                 .sort()
                 .map((p) =>
-                  sql.join([p[1].desc, p[1].ipl_id, p[1].memberNumber], sql`, `)
+                  sql.join(
+                    [p[1].desc, p[1].ipl_id, p[1].memberNumber],
+                    sql`, `,
+                  ),
                 ),
-              sql`), (`
+              sql`), (`,
             )}
           )
           ON CONFLICT (ipl_id) DO UPDATE SET player_name=excluded.player_name, member_id=excluded.member_id
@@ -474,13 +491,13 @@ export async function handler(event, context) {
             ${sql.join(
               [...entities]
                 .filter(
-                  (p) => p[1].type === "player" && p[1].ipl_id.startsWith("#")
+                  (p) => p[1].type === "player" && p[1].ipl_id.startsWith("#"),
                 )
                 .sort()
                 .map((p) =>
-                  sql.join([p[1].lfstatsId, p[1].desc, true], sql`, `)
+                  sql.join([p[1].lfstatsId, p[1].desc, true], sql`, `),
                 ),
-              sql`), (`
+              sql`), (`,
             )} 
           )
           ON CONFLICT (player_id,player_name) DO UPDATE SET is_active=true
@@ -523,7 +540,7 @@ export async function handler(event, context) {
         } else if (redElim) winner = "green";
         else if (greenElim) winner = "red";
         game.name = `Game @ ${DateTime.fromSQL(
-          game.missionStartTime
+          game.missionStartTime,
         ).toLocaleString(DateTime.TIME_24_SIMPLE)}`;
 
         let gameRecord = await client.query(sql`
@@ -606,10 +623,10 @@ export async function handler(event, context) {
                       action.team,
                       newGame.id,
                     ],
-                    sql`, `
-                  )
+                    sql`, `,
+                  ),
                 ),
-                sql`), (`
+                sql`), (`,
               )}
             )
           `);
@@ -635,10 +652,10 @@ export async function handler(event, context) {
                       delta.team,
                       newGame.id,
                     ],
-                    sql`, `
-                  )
+                    sql`, `,
+                  ),
                 ),
-                sql`), (`
+                sql`), (`,
               )}
             )
           `);
@@ -664,10 +681,10 @@ export async function handler(event, context) {
                       r[1].category,
                       newGame.id,
                     ],
-                    sql`, `
-                  )
+                    sql`, `,
+                  ),
                 ),
-              sql`), (`
+              sql`), (`,
             )} 
           )
         `);
@@ -688,10 +705,10 @@ export async function handler(event, context) {
                     t[1].normalTeam,
                     newGame.id,
                   ],
-                  sql`, `
-                )
+                  sql`, `,
+                ),
               ),
-              sql`), (`
+              sql`), (`,
             )} 
           )
           RETURNING *
@@ -1082,31 +1099,31 @@ export async function handler(event, context) {
             case "Ammo Carrier":
               mvpDetails.positionBonus.value += Math.max(
                 Math.floor((scorecard.score - 3000) / 10) * 0.01,
-                0
+                0,
               );
               break;
             case "Commander":
               mvpDetails.positionBonus.value += Math.max(
                 Math.floor((scorecard.score - 10000) / 10) * 0.01,
-                0
+                0,
               );
               break;
             case "Heavy Weapons":
               mvpDetails.positionBonus.value += Math.max(
                 Math.floor((scorecard.score - 7000) / 10) * 0.01,
-                0
+                0,
               );
               break;
             case "Medic":
               mvpDetails.positionBonus.value += Math.max(
                 Math.floor((scorecard.score - 2000) / 10) * 0.02,
-                0
+                0,
               );
               break;
             case "Scout":
               mvpDetails.positionBonus.value += Math.max(
                 Math.floor((scorecard.score - 6000) / 10) * 0.01,
-                0
+                0,
               );
               break;
           }
@@ -1203,8 +1220,8 @@ export async function handler(event, context) {
             mvpDetails.elimBonus.value += Number.parseFloat(
               Math.max(
                 4.0 + (newGame.duration - newGame.game_length - 180) / 60,
-                4.0
-              ).toFixed(2)
+                4.0,
+              ).toFixed(2),
             );
           }
 
@@ -1236,7 +1253,7 @@ export async function handler(event, context) {
                     [
                       ...resuppliedActionCodes,
                       ...deactivatedActionCodes,
-                    ].includes(action.type)))
+                    ].includes(action.type))),
             )
             .sort((a, b) => a.time - b.time);
 
@@ -1250,7 +1267,7 @@ export async function handler(event, context) {
             // if the player was deactivated again before they came up (e.g. reset, nuke), then this deac duration is less than 8s
             const deacDuration = Math.min(
               ((nextDeac && nextDeac.time) || player.end) - deac.time,
-              8000
+              8000,
             );
 
             // calculate how much time passed between the previous deactivation and this one.
@@ -1281,7 +1298,7 @@ export async function handler(event, context) {
           await client.query(sql`
                 UPDATE scorecards
                 SET mvp_points=${mvp}, mvp_details=${JSON.stringify(
-                  mvpDetails
+                  mvpDetails,
                 )}, uptime=${uptime}, resupply_downtime=${resupplyDowntime}, other_downtime=${otherDowntime}
                 WHERE id = ${scorecard.id}
               `);
