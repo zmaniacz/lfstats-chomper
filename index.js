@@ -1,5 +1,6 @@
 import {
   CopyObjectCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -16,10 +17,12 @@ import { createQueryLoggingInterceptor } from "slonik-interceptor-query-logging"
 const interceptors = [createQueryLoggingInterceptor()];
 
 const s3Client = new S3Client({ region: "us-east-1" });
+const s3ClientWest = new S3Client({ region: "us-west-1" });
 const chomperVersion = "1.1.0";
 
 const targetBucket = process.env.TARGET_BUCKET;
 const sourceBucket = process.env.SOURCE_BUCKET;
+const modernBucket = process.env.MODERN_BUCKET;
 const dbCredsSecret = process.env.DB_CREDS_SECRET;
 
 export async function handler(event, context) {
@@ -396,25 +399,53 @@ export async function handler(event, context) {
       await chompFile(rl);
 
       try {
-        const copyResult = await s3Client.send(
+        const copyResultArchive = await s3Client.send(
           new CopyObjectCommand({
-            CopySource: params.Bucket + "/" + params.Key,
+            CopySource: `${params.Bucket}/${params.Key}`,
             Bucket: targetBucket,
             Key: game.tdfKey,
           }),
         );
-        console.log("MOVED TDF TO ARCHIVE", copyResult);
+        console.log("MOVED TDF TO ARCHIVE", copyResultArchive);
+
+        let copyResultModern = null;
+        if (modernBucket) {
+          copyResultModern = await s3ClientWest.send(
+            new CopyObjectCommand({
+              CopySource: `${params.Bucket}/${params.Key}`,
+              Bucket: modernBucket,
+              Key: game.tdfKey,
+            }),
+          );
+          console.log("MOVED TDF TO MODERN ARCHIVE", copyResultModern);
+        }
+
+        // Only delete the original object if the copy(s) succeeded
+        const ok = (r) =>
+          r &&
+          r.$metadata &&
+          r.$metadata.httpStatusCode >= 200 &&
+          r.$metadata.httpStatusCode < 300;
+        const archiveOk = ok(copyResultArchive);
+        const modernOk = modernBucket ? ok(copyResultModern) : true;
+
+        if (archiveOk && modernOk) {
+          try {
+            const deleteResult = await s3Client.send(
+              new DeleteObjectCommand(params),
+            );
+            console.log("REMOVED TDF", deleteResult);
+          } catch (err) {
+            console.log("ERROR REMOVING TDF", err);
+          }
+        } else {
+          console.log("One or more copy operations failed; skipping delete", {
+            copyResultArchive,
+            copyResultModern,
+          });
+        }
       } catch (err) {
         console.log("ERROR MOVING TDF TO ARCHIVE", err);
-      }
-
-      try {
-        const deleteResult = await s3Client.send(
-          new DeleteObjectCommand(params),
-        );
-        console.log("REMOVED TDF", deleteResult);
-      } catch (err) {
-        console.log("ERROR REMOVING TDF", err);
       }
 
       //IMPORT PROCESS
