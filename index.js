@@ -1,13 +1,12 @@
 import {
-  GetSecretValueCommand,
-  SecretsManagerClient,
-} from "@aws-sdk/client-secrets-manager";
-import {
   CopyObjectCommand,
-  DeleteObjectCOmmand,
   GetObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
 import { decodeStream, encodeStream } from "iconv-lite";
 import { DateTime } from "luxon";
 import { createInterface } from "readline";
@@ -397,7 +396,7 @@ export async function handler(event, context) {
       await chompFile(rl);
 
       try {
-        const copyResult = await s3.send(
+        const copyResult = await s3Client.send(
           new CopyObjectCommand({
             CopySource: params.Bucket + "/" + params.Key,
             Bucket: targetBucket,
@@ -410,7 +409,9 @@ export async function handler(event, context) {
       }
 
       try {
-        const deleteResult = await s3.send(new DeleteObjectCommand(params));
+        const deleteResult = await s3Client.send(
+          new DeleteObjectCommand(params),
+        );
         console.log("REMOVED TDF", deleteResult);
       } catch (err) {
         console.log("ERROR REMOVING TDF", err);
