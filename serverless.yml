@@ -2,7 +2,6 @@
 org: zmaniacz
 service: lfstats-chomper
 
-
 useDotenv: true
 
 package:
@@ -45,6 +44,17 @@ provider:
             - "s3:GetObject"
           Resource:
             - "arn:aws:s3:::lfstats-scorecard-archive/*"
+        - Effect: "Allow"
+          Action:
+            - "s3:ListBucket"
+          Resource:
+            - "arn:aws:s3:::lfstats-modern-incoming"
+        - Effect: "Allow"
+          Action:
+            - "s3:PutObject"
+            - "s3:GetObject"
+          Resource:
+            - "arn:aws:s3:::lfstats-modern-incoming/*"
   runtime: nodejs24.x
   memorySize: 2048
   timeout: 600
